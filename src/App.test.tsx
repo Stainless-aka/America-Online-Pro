@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from './App'
 
@@ -11,8 +12,9 @@ describe('America Online Pro dashboard', () => {
   })
 
   it('allows the demo balance to be hidden', async () => {
+    const user = userEvent.setup()
     render(<App />)
-    screen.getByRole('button', { name: /hide balance/i }).click()
+    await user.click(screen.getByRole('button', { name: /hide balance/i }))
     expect(screen.getByText('••••••••••')).toBeInTheDocument()
   })
 })
