@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import type { FormEvent } from 'react'
 import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './admin.css'
@@ -70,7 +70,7 @@ export default function Admin() {
     return users.filter(user => [user.email, user.full_name, user.account_number || '', ...user.roles].some(value => value.toLowerCase().includes(term)))
   }, [users, query])
 
-  const createUser = async (event: React.FormEvent<HTMLFormElement>) => {
+  const createUser = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setBusy(true)
     try {
