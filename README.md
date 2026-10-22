@@ -22,13 +22,16 @@ A portfolio digital-banking simulation inspired by the engineering lessons of We
 
 See [`docs/architecture.md`](docs/architecture.md), [`docs/database-design.md`](docs/database-design.md), and [`docs/security-model.md`](docs/security-model.md).
 
-## Planned implementation stages
+## Current implementation
 
-1. Frontend foundation and design system.
-2. Database schema, migrations, RLS, and role model.
-3. Ledger, atomic transfers, idempotency, and concurrency tests.
-4. Customer dashboard, accounts, and transaction workflows.
-5. Restricted admin console, end-to-end tests, and deployment.
+- Email/password signup, sign-in, sign-out, and password recovery/update flows.
+- Responsive Overview, Accounts, Transfers, Cards (visual preview only), Transactions, Analytics, Add Demo Funds, Settings, Notifications, and Help Center pages.
+- Account and transaction views load from Supabase; profile edits are persisted.
+- Demo-fund credits and internal demo transfers are performed through scoped PostgreSQL functions and recorded in the ledger.
+- Row Level Security and restricted direct-write grants are defined in migrations.
+- Vitest and Playwright tests cover the authentication shell and registration navigation.
+
+The database migrations must be applied to a dedicated Supabase project and the frontend must be configured with its public URL and publishable/anon key before backend features can run. The repository has not yet been verified with a completed local build or live end-to-end run.
 
 ## Local setup
 
@@ -40,7 +43,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`. Never put a Supabase service-role key or other secret in frontend environment variables. The app scaffold and database migrations will be added incrementally; see the repository for current implementation status.
+Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`. Never put a Supabase service-role key or other secret in frontend environment variables. Apply migrations in `supabase/migrations/` in timestamp order. Configure the Supabase Auth site URL and redirect allowlist to include your local development URL and deployed domain.
 
 ## Financial invariants
 
