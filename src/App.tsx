@@ -33,7 +33,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [search, setSearch] = useState('')
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset'>('signin')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'update-password'>('signin')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
@@ -58,6 +58,7 @@ function App() {
     })
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
+      if (_event === 'PASSWORD_RECOVERY') setAuthMode('update-password')
       setAuthReady(true)
     })
     return () => data.subscription.unsubscribe()
@@ -109,6 +110,10 @@ function App() {
       const result = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: window.location.origin })
       error = result.error
       if (!error) announce('success', 'Password reset instructions have been sent if that email is registered.')
+    } else if (authMode === 'update-password') {
+      const result = await supabase.auth.updateUser({ password: authPassword })
+      error = result.error
+      if (!error) { announce('success', 'Password updated successfully.'); setAuthMode('signin'); setAuthPassword('') }
     } else {
       const result = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
       error = result.error
@@ -175,7 +180,7 @@ function App() {
 
   if (!authReady) return <div className="loading-screen"><LoaderCircle className="spin" size={30} /><p>Connecting securely…</p></div>
 
-  if (!session) return (
+  if (!session || authMode === 'update-password') return (
     <div className="auth-shell">
       <section className="auth-brand-panel">
         <a className="brand auth-brand" href="#signin"><span className="brand-mark"><span /></span><span className="brand-name">america<span>online</span><small>PRO</small></span></a>
@@ -184,18 +189,18 @@ function App() {
       </section>
       <section className="auth-form-panel"><div className="auth-form-wrap">
         <div className="auth-mobile-brand"><span className="brand-mark"><span /></span><strong>america<span>online</span> PRO</strong></div>
-        <span className="section-kicker">{authMode === 'signup' ? 'GET STARTED' : authMode === 'reset' ? 'ACCOUNT RECOVERY' : 'WELCOME BACK'}</span>
-        <h2>{authMode === 'signup' ? 'Create your account' : authMode === 'reset' ? 'Reset your password' : 'Sign in to your account'}</h2>
-        <p className="auth-description">{authMode === 'signup' ? 'Set up your demo banking workspace in a moment.' : authMode === 'reset' ? 'We’ll email you a secure password reset link.' : 'Your finances, all in one place.'}</p>
+        <span className="section-kicker">{authMode === 'signup' ? 'GET STARTED' : authMode === 'reset' || authMode === 'update-password' ? 'ACCOUNT RECOVERY' : 'WELCOME BACK'}</span>
+        <h2>{authMode === 'signup' ? 'Create your account' : authMode === 'reset' ? 'Reset your password' : authMode === 'update-password' ? 'Choose a new password' : 'Sign in to your account'}</h2>
+        <p className="auth-description">{authMode === 'signup' ? 'Set up your demo banking workspace in a moment.' : authMode === 'reset' ? 'We’ll email you a secure password reset link.' : authMode === 'update-password' ? 'Choose a strong password to secure your account.' : 'Your finances, all in one place.'}</p>
         <form className="auth-form" onSubmit={doAuth}>
           {authMode === 'signup' && <label>Full name<input value={authName} onChange={e => setAuthName(e.target.value)} autoComplete="name" required minLength={2} placeholder="Your full name" /></label>}
           <label>Email address<input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com" /></label>
-          {authMode !== 'reset' && <label>Password<input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} required minLength={authMode === 'signup' ? 8 : 1} placeholder={authMode === 'signup' ? 'At least 8 characters' : 'Your password'} /></label>}
+          {authMode !== 'reset' && <label>{authMode === 'update-password' ? 'New password' : 'Password'}<input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} required minLength={authMode === 'signup' || authMode === 'update-password' ? 8 : 1} placeholder={authMode === 'signup' || authMode === 'update-password' ? 'At least 8 characters' : 'Your password'} /></label>}
           {authMode === 'signin' && <button type="button" className="auth-inline-link" onClick={() => setAuthMode('reset')}>Forgot password?</button>}
-          <button className="primary-button auth-submit" disabled={saving}>{saving && <LoaderCircle size={16} className="spin" />}{authMode === 'signup' ? 'Create account' : authMode === 'reset' ? 'Send reset link' : 'Sign in'} <ArrowUpRight size={16} /></button>
+          <button className="primary-button auth-submit" disabled={saving}>{saving && <LoaderCircle size={16} className="spin" />}{authMode === 'signup' ? 'Create account' : authMode === 'reset' ? 'Send reset link' : authMode === 'update-password' ? 'Update password' : 'Sign in'} <ArrowUpRight size={16} /></button>
         </form>
-        <p className="auth-switch">{authMode === 'signup' ? 'Already registered?' : 'New to America Online Pro?'} <button onClick={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}>{authMode === 'signup' ? 'Sign in' : 'Create an account'}</button></p>
-        {authMode === 'reset' && <button className="auth-inline-link" onClick={() => setAuthMode('signin')}>Back to sign in</button>}
+        {(authMode === 'signin' || authMode === 'signup') && <p className="auth-switch">{authMode === 'signup' ? 'Already registered?' : 'New to America Online Pro?'} <button onClick={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}>{authMode === 'signup' ? 'Sign in' : 'Create an account'}</button></p>}
+        {(authMode === 'reset' || authMode === 'update-password') && <button className="auth-inline-link" onClick={() => setAuthMode('signin')}>Back to sign in</button>}
         {!supabase && <p className="config-warning">Supabase is not connected. Configure <code>.env.local</code> to enable authentication and database features.</p>}
       </div></section>
       {notice && <NoticeToast notice={notice} onClose={() => setNotice(null)} />}
