@@ -1,4 +1,5 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
 import {
   Activity, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, ChevronDown,
   CircleHelp, CreditCard, Eye, EyeOff, LayoutDashboard, LogOut, Menu, Plus, Search,
