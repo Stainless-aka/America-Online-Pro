@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import {
   Activity, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, ChevronDown,
   CircleHelp, CreditCard, Eye, EyeOff, LayoutDashboard, LogOut, Menu, Plus, Search,
@@ -249,17 +249,17 @@ function App() {
   </div>
 }
 
-function PageHeader({ kicker, title, subtitle, action, children }: { kicker: string; title: string; subtitle: string; action?: React.ReactNode; children: React.ReactNode }) {
+function PageHeader({ kicker, title, subtitle, action, children }: { kicker: string; title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
   return <><div className="subpage-header"><div><span className="section-kicker">{kicker}</span><h1>{title}</h1><p className="page-subtitle">{subtitle}</p></div>{action}</div>{children}</>
 }
-function StatCard({ title, value, detail, icon, tone }: { title: string; value: string; detail: string; icon: React.ReactNode; tone: string }) {
+function StatCard({ title, value, detail, icon, tone }: { title: string; value: string; detail: string; icon: ReactNode; tone: string }) {
   return <article className="stat-card"><div className="stat-top"><span>{title}</span><span className={`stat-icon stat-icon-${tone}`}>{icon}</span></div><div className="stat-value">{value}</div><div className="stat-foot">{detail}</div></article>
 }
 function TransactionTable({ entries, onSelect }: { entries: Entry[]; onSelect: () => void }) {
   if (!entries.length) return <EmptyState title="No transactions yet" text="Once your account has ledger activity, it will appear here." />
   return <div className="activity-table"><div className="activity-table-head"><span>TRANSACTION</span><span>DATE</span><span>AMOUNT</span><span>STATUS</span></div>{entries.map(entry => { const amount = Number(entry.amount_minor); const description = entry.ledger_transactions?.description || 'Account activity'; return <button type="button" className="activity-row transaction-button-row" key={entry.id} onClick={onSelect}><div className="transaction-name"><span className={`transaction-avatar ${amount >= 0 ? 'credit' : 'debit'}`}>{amount >= 0 ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}</span><strong>{description}</strong></div><span className="transaction-category">{dateLabel(entry.created_at)}</span><strong className={`transaction-amount ${amount >= 0 ? 'credit' : 'debit'}`}>{amount >= 0 ? '+' : '−'}{money(Math.abs(amount), entry.currency)}</strong><span className="transaction-status"><i /> {entry.ledger_transactions?.status || 'posted'}</span></button> })}</div>
 }
-function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) {
+function EmptyState({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
   return <div className="empty-state"><span><Wallet size={21} /></span><strong>{title}</strong><p>{text}</p>{action}</div>
 }
 function NoticeToast({ notice, onClose }: { notice: Notice; onClose: () => void }) {
