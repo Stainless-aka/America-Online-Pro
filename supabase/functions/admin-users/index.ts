@@ -79,37 +79,40 @@ Deno.serve(async (req: Request) => {
     const { data: accounts, error: accountError } = await adminClient.from("accounts").select("id").eq("owner_id", userId);
     if (accountError) return reply(400, { error: accountError.message });
     const accountIds = (accounts || []).map((a) => a.id as string);
+
     const { data: transfers, error: transferReadError } = await adminClient.from("transfers").select("id")
       .or(accountIds.length
         ? `actor_id.eq.${userId},source_account_id.in.(${accountIds.join(",")}),destination_account_id.in.(${accountIds.join(",")})`
         : `actor_id.eq.${userId}`);
     if (transferReadError) return reply(400, { error: transferReadError.message });
-    const transferIds = (transfers || []).map((t) => t.id as string);
+    const transferIds = [...new Set((transfers || []).map((t) => t.id as string))];
 
+    // Collect every related ledger transaction before deleting any ledger entries.
+    const ledgerIdSet = new Set<string>();
+    if (accountIds.length) {
+      const { data: entries, error } = await adminClient.from("ledger_entries")
+        .select("ledger_transaction_id").in("account_id", accountIds);
+      if (error) return reply(400, { error: error.message });
+      for (const entry of entries || []) ledgerIdSet.add(entry.ledger_transaction_id as string);
+    }
+    if (transferIds.length) {
+      const { data: ledgers, error } = await adminClient.from("ledger_transactions")
+        .select("id").in("transfer_id", transferIds);
+      if (error) return reply(400, { error: error.message });
+      for (const ledger of ledgers || []) ledgerIdSet.add(ledger.id as string);
+    }
+    const ledgerIds = [...ledgerIdSet];
+
+    // Respect foreign keys: ledger entries -> ledger transactions -> transfers -> accounts.
     if (accountIds.length) {
       const { error } = await adminClient.from("ledger_entries").delete().in("account_id", accountIds);
       if (error) return reply(400, { error: error.message });
     }
-    let transferLedgerIds: string[] = [];
-    if (transferIds.length) {
-      const { data: transferLedgers, error } = await adminClient.from("ledger_transactions").select("id").in("transfer_id", transferIds);
-      if (error) return reply(400, { error: error.message });
-      transferLedgerIds = (transferLedgers || []).map((t) => t.id as string);
-      if (transferLedgerIds.length) {
-        const { error: entryError } = await adminClient.from("ledger_entries").delete().in("ledger_transaction_id", transferLedgerIds);
-        if (entryError) return reply(400, { error: entryError.message });
-      }
-    }
-    const ledgerIds = [...new Set([...transferLedgerIds])];
-    if (accountIds.length) {
-      // Remove any remaining ledger transactions that belonged exclusively to the deleted user's accounts.
-      const { data: remainingEntries, error } = await adminClient.from("ledger_entries").select("ledger_transaction_id").in("account_id", accountIds);
-      if (error) return reply(400, { error: error.message });
-      ledgerIds.push(...(remainingEntries || []).map((e) => e.ledger_transaction_id as string));
-    }
     if (ledgerIds.length) {
-      const { error } = await adminClient.from("ledger_transactions").delete().in("id", [...new Set(ledgerIds)]);
+      const { error } = await adminClient.from("ledger_entries").delete().in("ledger_transaction_id", ledgerIds);
       if (error) return reply(400, { error: error.message });
+      const { error: ledgerDeleteError } = await adminClient.from("ledger_transactions").delete().in("id", ledgerIds);
+      if (ledgerDeleteError) return reply(400, { error: ledgerDeleteError.message });
     }
     if (transferIds.length) {
       const { error } = await adminClient.from("transfers").delete().in("id", transferIds);
@@ -119,6 +122,7 @@ Deno.serve(async (req: Request) => {
       const { error } = await adminClient.from("accounts").delete().in("id", accountIds);
       if (error) return reply(400, { error: error.message });
     }
+
     const { error: roleDeleteError } = await adminClient.from("user_roles").delete().eq("user_id", userId);
     if (roleDeleteError) return reply(400, { error: roleDeleteError.message });
     const { error: profileDeleteError } = await adminClient.from("profiles").delete().eq("id", userId);
