@@ -4,7 +4,7 @@ import './landing.css'
 
 const features = [
   { icon: Wallet, title: 'One clear overview', copy: 'See your account balance, recent activity, and account details in one considered workspace.' },
-  { icon: ArrowRight, title: 'Transfers, thoughtfully designed', copy: 'Explore a clean transfer workflow in an isolated portfolio environment.' },
+  { icon: ArrowRight, title: 'Transfers, thoughtfully designed', copy: 'Explore a clean transfer workflow with a clear, guided interface.' },
   { icon: CreditCard, title: 'Your account at a glance', copy: 'Keep account identifiers and profile information easy to find.' },
 ]
 
