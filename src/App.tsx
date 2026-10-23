@@ -56,7 +56,7 @@ function InvestPage({ userId }: { userId: string }) {
   const loadQuotes = useCallback(async () => {
     if (!supabase) { setInvestMessage('Supabase is not configured.'); return }
     setRefreshingQuotes(true)
-    const { data, error } = await supabase.functions.invoke('market-quotes', { method: 'GET', body: undefined, headers: {}, query: { symbols: allSymbols.join(',') } } as never)
+    const { data, error } = await supabase.functions.invoke('market-quotes?symbols=' + encodeURIComponent(allSymbols.join(',')), { method: 'GET' })
     if (error) {
       setInvestMessage('Live quotes unavailable right now. ' + error.message)
     } else {
