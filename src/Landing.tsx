@@ -51,7 +51,6 @@ export default function Landing() {
           <div className="landing-preview-rule"/>
           <div className="landing-preview-bottom"><span><i className="landing-mini-icon"><Wallet size={16}/></i><span><b>Everyday account</b><small>Account details</small></span></span><span className="landing-preview-arrow"><ArrowUpRight size={17}/></span></div>
           <div className="landing-preview-bars"><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/><span/></div>
-          <small className="landing-preview-caption">Illustrative interface preview</small>
         </div>
         <div className="landing-float-stat"><span className="landing-stat-icon"><CircleDollarSign size={18}/></span><span><small>Currency</small><b>US Dollar (USD)</b></span></div>
       </div>
@@ -81,7 +80,7 @@ export default function Landing() {
 
     <section className="landing-final-cta"><div className="landing-final-glow"/><span className="landing-section-kicker">YOUR WORKSPACE AWAITS</span><h2>A better view starts here.</h2><p>Create your account to explore the America Online Pro interface.</p><a className="landing-cta" href="/app?mode=signup">Create an account <ArrowRight size={17}/></a></section>
 
-    <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark"><span/></span><span>america<span className="landing-brand-light">online</span><b>PRO</b></span></a><p>© {new Date().getFullYear()} America Online Pro. Built as a digital banking portfolio project.</p><span className="landing-demo-note"><Sparkles size={14}/> Portfolio environment · No real-money services</span></footer>
+    <footer className="landing-footer"><a className="landing-brand" href="/"><span className="landing-brand-mark"><span/></span><span>america<span className="landing-brand-light">online</span><b>PRO</b></span></a><p>© {new Date().getFullYear()} America Online Pro. All rights reserved.</p></footer>
   </main>
 }
 
