@@ -105,7 +105,7 @@ function InvestPage({ userId }: { userId: string }) {
 
   return <PageHeader kicker="LIVE MARKET DATA" title="Invest" subtitle="Track market quotes and maintain a personal holdings watchlist. Quotes are informational; this app does not execute trades.">
     <div className="invest-live-page">
-      <div className="invest-live-disclosure"><ShieldCheck size={17}/><p><strong>Live market information · No brokerage connection</strong><br/>Quotes are fetched from Yahoo Finance chart data and may be delayed, unavailable, or subject to provider limits. Holdings and cost basis are entered by you; no securities are bought or sold here.</p></div>
+      
       <section className="invest-live-summary">
         <article className="invest-live-summary-card invest-live-summary-main"><span>ESTIMATED HOLDINGS VALUE</span><strong>{usd(portfolioValue)}</strong><small>Based on latest available quotes for saved holdings</small></article>
         <article className="invest-live-summary-card"><span>RECORDED COST BASIS</span><strong>{usd(costBasis)}</strong><small>Quantity × your average purchase cost</small></article>
