@@ -1,0 +1,132 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
+import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { supabase } from './lib/supabase'
+import './admin.css'
+
+type ManagedUser = {
+  id: string; email: string; created_at: string; last_sign_in_at: string | null;
+  email_confirmed_at: string | null; full_name: string; roles: string[]; account_number: string | null
+}
+type Toast = { kind: 'success' | 'error'; text: string }
+const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`
+
+export default function Admin() {
+  const [ready, setReady] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [users, setUsers] = useState<ManagedUser[]>([])
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
+  const [email, setEmail] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [password, setPassword] = useState('')
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [sessionEmail, setSessionEmail] = useState('')
+  const [total, setTotal] = useState(0)
+
+  const callAdmin = useCallback(async (payload: Record<string, string>) => {
+    if (!supabase) throw new Error('Supabase is not configured.')
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !sessionData.session) throw new Error('Please sign in to an administrator account.')
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${sessionData.session.access_token}` },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`)
+    return data
+  }, [])
+
+  const loadUsers = useCallback(async () => {
+    setBusy(true)
+    try {
+      const data = await callAdmin({ action: 'list' })
+      setUsers(data.users || [])
+      setTotal(data.total || data.users?.length || 0)
+      setIsAdmin(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load users.'
+      setIsAdmin(false)
+      setToast({ kind: 'error', text: message })
+    } finally {
+      setBusy(false)
+      setReady(true)
+    }
+  }, [callAdmin])
+
+  useEffect(() => {
+    if (!supabase) { setToast({ kind: 'error', text: 'Supabase is not configured. Check your environment variables.' }); setReady(true); return }
+    void supabase.auth.getSession().then(({ data }) => {
+      setSessionEmail(data.session?.user.email || '')
+      if (!data.session) { setReady(true); setToast({ kind: 'error', text: 'Sign in to the main application first, then open /admin.' }); return }
+      void loadUsers()
+    })
+  }, [loadUsers])
+
+  const filteredUsers = useMemo(() => {
+    const term = query.trim().toLowerCase()
+    return users.filter(user => [user.email, user.full_name, user.account_number || '', ...user.roles].some(value => value.toLowerCase().includes(term)))
+  }, [users, query])
+
+  const createUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      await callAdmin({ action: 'create', email, fullName, password })
+      setToast({ kind: 'success', text: `Created account for ${email}. A demo account is created automatically.` })
+      setEmail(''); setFullName(''); setPassword(''); setShowCreate(false)
+      await loadUsers()
+    } catch (error) {
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not create user.' })
+    } finally { setBusy(false) }
+  }
+
+  const deleteUser = async (user: ManagedUser) => {
+    const confirmed = window.confirm(`Delete ${user.email} and their associated demo account, ledger entries, and transfer history? This cannot be undone.`)
+    if (!confirmed) return
+    setBusy(true)
+    try {
+      await callAdmin({ action: 'delete', userId: user.id })
+      setToast({ kind: 'success', text: `Deleted ${user.email} and associated demo records.` })
+      await loadUsers()
+    } catch (error) {
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not delete user.' })
+    } finally { setBusy(false) }
+  }
+
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
+  if (!ready) return <div className="admin-loading"><LoaderCircle className="admin-spin" size={26} /><p>Checking administrator access…</p></div>
+
+  return <div className="admin-shell">
+    <aside className="admin-sidebar">
+      <a href="/" className="admin-brand"><span className="admin-brand-icon">A</span><span>america<span>online</span><small>PRO ADMIN</small></span></a>
+      <div className="admin-side-label">ADMINISTRATION</div>
+      <div className="admin-side-item active"><Users size={17} /> User management</div>
+      <div className="admin-side-item"><ShieldCheck size={17} /> Access controlled</div>
+      <div className="admin-sidebar-foot"><span className="admin-avatar">{sessionEmail.slice(0,1).toUpperCase() || 'A'}</span><div><strong>{sessionEmail || 'Not signed in'}</strong><small>Administrator portal</small></div><button aria-label="Sign out" onClick={() => void signOut()}><LogOut size={16} /></button></div>
+    </aside>
+    <main className="admin-main">
+      <header className="admin-topbar"><a href="/" className="admin-back"><ArrowLeft size={16} /> Main application</a><div className="admin-secure"><ShieldCheck size={15} /> Restricted access</div></header>
+      <div className="admin-content">
+        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>User management</h1><p>Create, review, and remove America Online Pro simulation users.</p></div><button className="admin-refresh" onClick={() => void loadUsers()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
+        {toast && <div className={`admin-toast ${toast.kind}`}>{toast.kind === 'success' ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}<span>{toast.text}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
+        {!isAdmin ? <section className="admin-access-card"><span className="admin-access-icon"><ShieldCheck size={24} /></span><h2>Administrator access required</h2><p>This portal is protected by Supabase. Your account must have the <code>admin</code> role in <code>public.user_roles</code>. The page does not grant administrator privileges by itself.</p><p className="admin-current-user">Signed in as: <strong>{sessionEmail || 'No active session'}</strong></p><button className="admin-secondary" onClick={() => window.location.href = '/'}>Return to application</button></section> : <>
+          <section className="admin-stats"><article><span className="admin-stat-icon"><Users size={18} /></span><div><small>REGISTERED USERS</small><strong>{total}</strong><span>First 200 loaded from Supabase Auth</span></div></article><article><span className="admin-stat-icon green"><Activity size={18} /></span><div><small>FILTERED RESULTS</small><strong>{filteredUsers.length}</strong><span>Matching your search</span></div></article></section>
+          <section className="admin-users-card"><div className="admin-table-heading"><div><h2>All users</h2><p>Review accounts and access details.</p></div><button className="admin-primary" onClick={() => setShowCreate(!showCreate)}><Plus size={16} /> Create user</button></div>
+            {showCreate && <form className="admin-create-form" onSubmit={createUser}><div className="admin-form-title"><div><strong>Create a user</strong><p>Creates a confirmed login and a zero-balance demo account.</p></div><button type="button" aria-label="Close form" onClick={() => setShowCreate(false)}><X size={16} /></button></div><div className="admin-form-grid"><label>Full name<input required minLength={2} maxLength={100} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Customer name" /></label><label>Email address<input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="customer@example.com" /></label><label className="admin-password-field">Temporary password<input required type="password" minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" /><small>Share securely and ask the user to change it after signing in.</small></label></div><div className="admin-form-actions"><button type="button" className="admin-secondary" onClick={() => setShowCreate(false)}>Cancel</button><button className="admin-primary" disabled={busy}>{busy ? <LoaderCircle size={15} className="admin-spin" /> : <Plus size={15} />} Create account</button></div></form>}
+            <div className="admin-table-tools"><label><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, email, account number, role…" /></label><span>{filteredUsers.length} result{filteredUsers.length === 1 ? '' : 's'}</span></div>
+            <div className="admin-table-wrap"><table><thead><tr><th>USER</th><th>ACCOUNT NUMBER</th><th>ROLE</th><th>CREATED</th><th>LAST SIGN IN</th><th>ACTION</th></tr></thead><tbody>{filteredUsers.map(user => <tr key={user.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(user.full_name || user.email).slice(0,1).toUpperCase()}</span><div><strong>{user.full_name || 'Unnamed user'}</strong><small>{user.email}</small></div></div></td><td><code>{user.account_number || 'Not assigned'}</code></td><td><span className={`admin-role ${user.roles.includes('admin') ? 'admin-role-admin' : ''}`}>{user.roles.join(', ') || 'customer'}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}</td><td><button className="admin-delete" disabled={busy} title="Delete user" aria-label={`Delete ${user.email}`} onClick={() => void deleteUser(user)}><Trash2 size={16} /></button></td></tr>)}</tbody></table>{!filteredUsers.length && <div className="admin-empty"><Users size={25} /><strong>No users found</strong><span>Try a different search or create a user.</span></div>}</div>
+            <div className="admin-table-foot"><span><ShieldCheck size={14} /> User management actions are server-validated.</span><span>Simulation environment only</span></div>
+          </section>
+        </>}
+        <footer className="admin-footer">America Online Pro · Administrative tools · Simulation only</footer>
+      </div>
+    </main>
+  </div>
+}
