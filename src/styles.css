@@ -142,3 +142,57 @@
 .invest-page-disclaimer svg{flex-shrink:0;color:#7e9d70;margin-top:1px}
 @media(max-width:900px){.invest-hero{grid-template-columns:minmax(0,1fr) 220px;padding:26px}.invest-hero-art{transform:scale(.88)}}
 @media(max-width:650px){.invest-page{gap:19px}.invest-hero{grid-template-columns:1fr;padding:24px 21px 18px}.invest-hero h2{font-size:28px}.invest-hero-art{min-height:150px;margin-top:4px;transform:none}.invest-orbit-one{width:200px;height:145px}.invest-orbit-two{width:155px;height:195px}.invest-art-core{width:80px;height:80px;border-radius:24px}.invest-chip-top{top:8px;right:4px}.invest-chip-bottom{bottom:5px;left:0}.invest-section-title{align-items:flex-start;flex-direction:column;gap:10px}.invest-tool-grid{grid-template-columns:1fr;gap:12px}.invest-tool-card{padding:19px}.invest-tool-card>p{min-height:0}.invest-placeholder-chart{height:110px}}
+
+
+/* Live market workspace */
+.invest-live-page{display:grid;gap:22px}
+.invest-live-disclosure{display:flex;align-items:flex-start;gap:12px;padding:15px 17px;border:1px solid #dce9d3;background:#f4f9ef;border-radius:12px;color:#54734a}
+.invest-live-disclosure>svg,.invest-live-disclaimer>svg{flex-shrink:0;margin-top:2px}
+.invest-live-disclosure p{margin:0;color:#70816b;font-size:11px;line-height:1.7}
+.invest-live-disclosure strong{color:#365b32;font-size:11px}
+.invest-live-summary{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:13px}
+.invest-live-summary-card{display:grid;gap:9px;min-width:0;padding:19px;border:1px solid #e6ece3;border-radius:12px;background:#fff}
+.invest-live-summary-card>span{font-size:9px;letter-spacing:.8px;color:#849084;font-weight:700}
+.invest-live-summary-card>strong{font:700 clamp(19px,2.3vw,27px) Manrope,sans-serif;letter-spacing:-.7px;color:#26342a;overflow-wrap:anywhere}
+.invest-live-summary-card>small{font-size:10px;line-height:1.5;color:#89938a}
+.invest-live-summary-main{background:#1b2921;border-color:#1b2921}
+.invest-live-summary-main>span,.invest-live-summary-main>small{color:#c3d0c3}
+.invest-live-summary-main>strong{color:#c4f39a}
+.invest-positive{color:#4f853b!important}.invest-negative{color:#bb5149!important}
+.invest-live-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.invest-live-section-head h2{font:700 19px Manrope,sans-serif;letter-spacing:-.6px;margin:6px 0;color:#202a23}
+.invest-live-section-head p{font-size:11px;line-height:1.6;color:#879188;margin:5px 0 0}
+.invest-live-section-head>.secondary-button{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.invest-quotes-card{padding:0;overflow:hidden}
+.invest-quotes-table-wrap{width:100%;overflow-x:auto}
+.invest-quotes-table{width:100%;border-collapse:collapse;min-width:650px;text-align:left}
+.invest-quotes-table th{padding:13px 16px;background:#f8faf6;color:#8a958a;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+.invest-quotes-table td{padding:14px 16px;border-top:1px solid #edf0eb;color:#465348;font-size:11px;white-space:nowrap}
+.invest-quotes-table td:first-child{display:table-cell}
+.invest-quotes-table td:first-child strong,.invest-quotes-table td:first-child small{display:block}
+.invest-quotes-table td:first-child strong{color:#29382d;font-size:12px}
+.invest-quotes-table td:first-child small{margin-top:4px;color:#929b91;font-size:9px}
+.invest-market-state{display:inline-block;padding:5px 7px;border-radius:5px;background:#f1f6ed;color:#708765;font-size:9px;text-transform:capitalize}
+.invest-watch-action{border:1px solid #e0e8da;border-radius:7px;background:white;color:#4e793e;font-size:10px;font-weight:700;padding:7px 10px}
+.invest-quotes-footer{padding:12px 16px;border-top:1px solid #edf0eb;color:#89938a;font-size:9px}
+.invest-holdings-layout{display:grid;grid-template-columns:minmax(230px,.72fr) minmax(0,1.28fr);gap:16px;align-items:start}
+.invest-holding-form{display:grid;gap:10px;padding:22px}
+.invest-holding-form>label{margin-top:5px;color:#465348;font-size:10px;font-weight:700}
+.invest-holding-form>input{width:100%;min-width:0;padding:11px 12px;border:1px solid #dfe7dc;border-radius:8px;background:#fff;color:#2d3b30;font:400 12px 'DM Sans',sans-serif}
+.invest-holding-form>small{font-size:9px;line-height:1.6;color:#879188;margin:3px 0}
+.invest-holding-form>.primary-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;margin-top:5px}
+.invest-feedback{font-size:10px;line-height:1.6;color:#587a4a;margin:0;overflow-wrap:anywhere}
+.invest-holdings-card{padding:21px;min-width:0}
+.invest-holdings-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.invest-holdings-heading h3{font:700 16px Manrope,sans-serif;letter-spacing:-.4px;margin:6px 0 0}
+.invest-holdings-heading .text-button{display:flex;align-items:center;gap:5px}
+.invest-saved-list{display:grid}
+.invest-saved-row{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #edf0eb}
+.invest-saved-row:last-child{border-bottom:0}
+.invest-saved-row>div{display:grid;gap:5px;min-width:0}
+.invest-saved-row>div>strong{font-size:11px;color:#2d3a30;overflow-wrap:anywhere}
+.invest-saved-row>div>small{font-size:9px;color:#89938a;overflow-wrap:anywhere}
+.invest-remove-button{width:27px;height:27px;display:grid;place-items:center;border:1px solid #e7ebe4;border-radius:7px;background:#fff;color:#9b6a65}
+.invest-live-disclaimer{display:flex;align-items:flex-start;gap:8px;margin:0;color:#839084;font-size:10px;line-height:1.7}
+@media(max-width:900px){.invest-live-summary{grid-template-columns:1fr 1fr}.invest-live-summary-main{grid-column:1/-1}.invest-holdings-layout{grid-template-columns:1fr}}
+@media(max-width:650px){.invest-live-page{gap:17px}.invest-live-summary{grid-template-columns:1fr 1fr;gap:9px}.invest-live-summary-card{padding:14px}.invest-live-summary-main{grid-column:1/-1}.invest-live-section-head{align-items:flex-start;flex-direction:column}.invest-live-section-head>.secondary-button{align-self:flex-start}.invest-live-disclosure{padding:12px}.invest-holding-form,.invest-holdings-card{padding:17px}.invest-saved-row{grid-template-columns:minmax(0,1fr) auto 25px;gap:8px}}
