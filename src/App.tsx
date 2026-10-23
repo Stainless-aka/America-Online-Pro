@@ -244,7 +244,7 @@ function App() {
 
         {page === 'Transactions' && <PageHeader kicker="ACCOUNT ACTIVITY" title="Transactions" subtitle="Search and review posted ledger activity." action={<button className="secondary-button" onClick={() => void loadData()}><RefreshCw size={14} /> Refresh</button>}><div className="content-card transaction-page"><label className="table-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter by transaction description…" /></label><TransactionTable entries={filteredEntries} onSelect={() => {}} /><p className="table-footnote">Showing {filteredEntries.length} ledger entr{filteredEntries.length === 1 ? 'y' : 'ies'}. Your account activity and transaction history.</p></div></PageHeader>}
 
-        {page === 'Loans' && <PageHeader kicker="BORROWING" title="Loans" subtitle="Explore the loan tools planned for this demo workspace. No credit checks or real lending are available."><div className="account-grid"><article className="content-card"><div className="note-icon"><HandCoins size={19} /></div><h3>Personal loan</h3><p className="muted-text">A future demo flow for reviewing a sample loan amount, illustrative repayment schedule, and estimated interest.</p><span className="pill pill-green">Coming soon</span></article><article className="content-card"><div className="note-icon"><ShieldCheck size={19} /></div><h3>Loan eligibility</h3><p className="muted-text">Eligibility checks are not connected. This preview does not submit an application or access credit data.</p><span className="pill pill-green">Preview only</span></article></div></PageHeader>}
+        {page === 'Loans' && <LoansPage userId={session?.user.id || ''} />}
 
         {page === 'Invest' && <PageHeader kicker="WEALTH TOOLS" title="Invest" subtitle="A preview of investment tracking tools for this simulated account. No investments can be purchased here."><div className="account-grid"><article className="content-card"><div className="note-icon"><TrendingUp size={19} /></div><h3>Portfolio overview</h3><p className="muted-text">Portfolio allocation, performance charts, and holdings will appear here when the demo investment module is implemented.</p><span className="pill pill-green">Coming soon</span></article><article className="content-card"><div className="note-icon"><Activity size={19} /></div><h3>Market watchlist</h3><p className="muted-text">A place to follow sample assets and learn about market movements without placing trades.</p><span className="pill pill-green">Preview only</span></article></div></PageHeader>}
 
@@ -263,6 +263,306 @@ function App() {
     {menuOpen && <button className="mobile-overlay" aria-label="Close navigation overlay" onClick={() => setMenuOpen(false)} />}
     {notice && <NoticeToast notice={notice} onClose={() => setNotice(null)} />}
   </div>
+}
+
+
+type LoanApplication = {
+  id: string
+  amount: number
+  term_months: number
+  annual_rate: number
+  purpose: string
+  employment_status: string
+  monthly_income: number
+  status: 'submitted' | 'under_review' | 'declined' | 'closed'
+  created_at: string
+}
+
+function LoansPage({ userId }: { userId: string }) {
+  const [amount, setAmount] = useState(5000)
+  const [term, setTerm] = useState(24)
+  const [rate, setRate] = useState(10)
+  const [purpose, setPurpose] = useState('Personal expenses')
+  const [employment, setEmployment] = useState('Employed')
+  const [monthlyIncome, setMonthlyIncome] = useState('')
+  const [applications, setApplications] = useState<LoanApplication[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const [loadingApplications, setLoadingApplications] = useState(true)
+  const [savingApplication, setSavingApplication] = useState(false)
+
+  const loadApplications = useCallback(async () => {
+    if (!supabase || !userId) {
+      setApplications([])
+      setLoadingApplications(false)
+      setFeedback('Sign in with a configured account to access loan applications.')
+      return
+    }
+
+    setLoadingApplications(true)
+    const { data, error } = await supabase
+      .from('loan_applications')
+      .select('id,amount,term_months,annual_rate,purpose,employment_status,monthly_income,status,created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setFeedback(`Could not load applications: ${error.message}`)
+    } else {
+      setApplications((data || []) as LoanApplication[])
+      setFeedback('')
+    }
+    setLoadingApplications(false)
+  }, [userId])
+
+  useEffect(() => {
+    void loadApplications()
+  }, [loadApplications])
+
+  const monthlyRate = rate / 1200
+  const monthlyPayment = monthlyRate === 0
+    ? amount / term
+    : amount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -term))
+  const totalRepayment = monthlyPayment * term
+  const totalInterest = Math.max(0, totalRepayment - amount)
+
+  const formatUsd = (value: number) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 2,
+    }).format(value)
+
+  const statusLabel = (status: LoanApplication['status']) => ({
+    submitted: 'Submitted',
+    under_review: 'Under review',
+    declined: 'Declined',
+    closed: 'Closed',
+  })[status] || status
+
+  const submitApplication = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!supabase || !userId) {
+      setFeedback('Please sign in before submitting an application.')
+      return
+    }
+
+    const income = Number(monthlyIncome)
+    if (!Number.isFinite(income) || income <= 0) {
+      setFeedback('Enter a valid monthly income greater than zero.')
+      return
+    }
+
+    setSavingApplication(true)
+    setFeedback('')
+
+    const { error } = await supabase.from('loan_applications').insert({
+      user_id: userId,
+      amount,
+      term_months: term,
+      annual_rate: rate,
+      purpose,
+      employment_status: employment,
+      monthly_income: income,
+    })
+
+    setSavingApplication(false)
+
+    if (error) {
+      setFeedback(`Application could not be saved: ${error.message}`)
+      return
+    }
+
+    setShowForm(false)
+    setMonthlyIncome('')
+    setFeedback('Your application has been saved.')
+    await loadApplications()
+  }
+
+  return (
+    <PageHeader
+      kicker="LENDING SERVICES"
+      title="Loans & repayments"
+      subtitle="Calculate potential repayments, submit an application, and track your application history."
+      action={<button className="secondary-button" onClick={() => void loadApplications()} disabled={loadingApplications}><RefreshCw size={14} /> Refresh</button>}
+    >
+      <div className="loan-disclosure">
+        <ShieldCheck size={18} />
+        <div>
+          <strong>Application information</strong>
+          <p>Repayments are estimates, not loan offers. This platform does not perform credit checks, issue lending decisions, or disburse funds.</p>
+        </div>
+      </div>
+
+      <section className="loan-summary-grid">
+        <article className="loan-summary-card loan-summary-featured">
+          <span>ESTIMATED MONTHLY PAYMENT</span>
+          <strong>{formatUsd(monthlyPayment)}</strong>
+          <small>{term} monthly payments · {rate}% annual rate used for this estimate</small>
+        </article>
+        <article className="loan-summary-card">
+          <span>REQUESTED AMOUNT</span>
+          <strong>{formatUsd(amount)}</strong>
+          <small>Adjust the amount in the calculator</small>
+        </article>
+        <article className="loan-summary-card">
+          <span>YOUR APPLICATIONS</span>
+          <strong>{applications.length}</strong>
+          <small>Records retrieved from your account</small>
+        </article>
+      </section>
+
+      <div className="loan-main-grid">
+        <section className="content-card loan-calculator">
+          <div className="loan-section-heading">
+            <div>
+              <span className="section-kicker">PLAN AHEAD</span>
+              <h2>Loan calculator</h2>
+              <p>Adjust the amount, term, and annual rate to estimate repayments.</p>
+            </div>
+            <span className="loan-icon"><HandCoins size={20} /></span>
+          </div>
+
+          <div className="loan-control">
+            <div className="loan-control-heading">
+              <label htmlFor="loan-amount">Requested amount</label>
+              <strong>{formatUsd(amount)}</strong>
+            </div>
+            <input id="loan-amount" className="loan-range" type="range" min="500" max="25000" step="500" value={amount} onChange={event => setAmount(Number(event.target.value))} />
+            <div className="loan-range-labels"><span>$500</span><span>$25,000</span></div>
+          </div>
+
+          <div className="loan-control">
+            <label htmlFor="loan-term">Repayment term</label>
+            <select id="loan-term" value={term} onChange={event => setTerm(Number(event.target.value))}>
+              <option value={12}>12 months</option>
+              <option value={24}>24 months</option>
+              <option value={36}>36 months</option>
+              <option value={48}>48 months</option>
+            </select>
+          </div>
+
+          <div className="loan-control">
+            <div className="loan-control-heading">
+              <label htmlFor="loan-rate">Annual interest rate used for estimate</label>
+              <strong>{rate}%</strong>
+            </div>
+            <input id="loan-rate" className="loan-range" type="range" min="0" max="30" step="1" value={rate} onChange={event => setRate(Number(event.target.value))} />
+            <div className="loan-range-labels"><span>0%</span><span>30%</span></div>
+          </div>
+
+          <div className="loan-results">
+            <span>Estimated monthly repayment</span>
+            <strong>{formatUsd(monthlyPayment)}</strong>
+            <div><span>Total repayment</span><b>{formatUsd(totalRepayment)}</b></div>
+            <div><span>Estimated interest</span><b>{formatUsd(totalInterest)}</b></div>
+            <small>Calculator results are estimates and are not a loan offer.</small>
+          </div>
+
+          <button className="primary-button loan-apply-button" onClick={() => { setShowForm(value => !value); setFeedback('') }}>
+            <HandCoins size={16} />
+            {showForm ? 'Close application form' : 'Start an application'}
+          </button>
+        </section>
+
+        <aside className="content-card loan-side-panel">
+          <div className="loan-side-icon"><Activity size={20} /></div>
+          <span className="section-kicker">APPLICATION TRACKER</span>
+          <h2>Track your progress</h2>
+          <p>View the latest status saved for each application.</p>
+          <div className="loan-status-steps">
+            <div><span>1</span><p><strong>Submitted</strong><small>Application received</small></p></div>
+            <div><span>2</span><p><strong>Under review</strong><small>Status depends on authorised updates</small></p></div>
+            <div><span>3</span><p><strong>Final status</strong><small>Check your application record</small></p></div>
+          </div>
+        </aside>
+      </div>
+
+      {showForm && (
+        <section className="content-card loan-application-card">
+          <div className="loan-section-heading">
+            <div>
+              <span className="section-kicker">APPLICATION FORM</span>
+              <h2>Application details</h2>
+              <p>Submit your details to save an application to your account.</p>
+            </div>
+          </div>
+          <form className="app-form loan-form" onSubmit={submitApplication}>
+            <div className="loan-form-grid">
+              <label>Loan purpose
+                <select value={purpose} onChange={event => setPurpose(event.target.value)}>
+                  <option>Personal expenses</option>
+                  <option>Education</option>
+                  <option>Home improvement</option>
+                  <option>Vehicle expenses</option>
+                  <option>Debt consolidation</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>Employment status
+                <select value={employment} onChange={event => setEmployment(event.target.value)}>
+                  <option>Employed</option>
+                  <option>Self-employed</option>
+                  <option>Student</option>
+                  <option>Unemployed</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>Monthly income (USD)
+                <div className="currency-input"><span>$</span><input type="number" min="0.01" step="0.01" required value={monthlyIncome} onChange={event => setMonthlyIncome(event.target.value)} placeholder="e.g. 3500" /></div>
+              </label>
+              <label>Requested loan amount
+                <input value={formatUsd(amount)} readOnly />
+              </label>
+            </div>
+            <div className="form-notice">
+              <ShieldCheck size={17} />
+              <span>Your application details are saved to your signed-in account. Submission does not constitute approval or a commitment to lend.</span>
+            </div>
+            <button className="primary-button" type="submit" disabled={savingApplication || !supabase || !userId}>
+              {savingApplication ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}
+              {savingApplication ? 'Submitting…' : 'Submit application'}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {feedback && <div className="loan-feedback" role="status">{feedback}</div>}
+
+      <section className="loan-history-section">
+        <div className="section-heading loan-history-heading">
+          <div><span className="section-kicker">APPLICATION ACTIVITY</span><h2>Loan history</h2></div>
+          <span className="loan-history-count">{applications.length} {applications.length === 1 ? 'application' : 'applications'}</span>
+        </div>
+
+        {loadingApplications ? (
+          <div className="content-card loan-empty-state"><LoaderCircle size={22} className="spin" /><p>Loading your applications…</p></div>
+        ) : applications.length === 0 ? (
+          <div className="content-card loan-empty-state">
+            <span className="loan-icon"><HandCoins size={22} /></span>
+            <strong>No applications yet</strong>
+            <p>Your submitted applications will appear here.</p>
+            <button className="secondary-button" onClick={() => setShowForm(true)}>Start an application</button>
+          </div>
+        ) : (
+          <div className="content-card loan-history-list">
+            {applications.map(application => (
+              <article className="loan-history-row" key={application.id}>
+                <span className="loan-history-icon"><HandCoins size={18} /></span>
+                <div className="loan-history-details">
+                  <strong>{application.purpose}</strong>
+                  <span>{application.id.slice(0, 8).toUpperCase()} · {new Date(application.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                  <small>{application.term_months} months · {application.annual_rate}% annual rate</small>
+                </div>
+                <strong className="loan-history-amount">{formatUsd(Number(application.amount))}</strong>
+                <span className="loan-history-status">{statusLabel(application.status)}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </PageHeader>
+  )
 }
 
 function PageHeader({ kicker, title, subtitle, action, children }: { kicker: string; title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
