@@ -143,6 +143,7 @@ function App() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'update-password'>(() => new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
+  const [showAuthPassword, setShowAuthPassword] = useState(false)
   const [authName, setAuthName] = useState('')
   const [transferAccount, setTransferAccount] = useState('')
   const [transferAmount, setTransferAmount] = useState('')
@@ -291,18 +292,18 @@ function App() {
     <div className="auth-shell">
       <section className="auth-brand-panel">
         <a className="brand auth-brand" href="#signin"><span className="brand-mark"><span /></span><span className="brand-name">america<span>online</span><small>PRO</small></span></a>
-        <div className="auth-pitch"><span className="section-kicker">YOUR MONEY, IN MOTION</span><h1>Move with<br />confidence<span>.</span></h1><p>A clean, simple place to understand your money. This is a simulation environment — no real money or payments are involved.</p><div className="auth-assurance"><ShieldCheck size={17} /> Private by design. Secured by Supabase.</div></div>
-        <div className="auth-panel-foot">© 2026 America Online Pro · Simulation only</div>
+        <div className="auth-pitch"><span className="section-kicker">YOUR MONEY, IN MOTION</span><h1>Move with<br />confidence<span>.</span></h1><p>A clean, simple place to understand your money. Manage your account with a clear, simple digital banking experience.</p><div className="auth-assurance"><ShieldCheck size={17} /> Private by design. Secured by Supabase.</div></div>
+        <div className="auth-panel-foot">© 2026 America Online Pro. All rights reserved.</div>
       </section>
       <section className="auth-form-panel"><div className="auth-form-wrap">
         <div className="auth-mobile-brand"><span className="brand-mark"><span /></span><strong>america<span>online</span> PRO</strong></div>
         <span className="section-kicker">{authMode === 'signup' ? 'GET STARTED' : authMode === 'reset' || authMode === 'update-password' ? 'ACCOUNT RECOVERY' : 'WELCOME BACK'}</span>
         <h2>{authMode === 'signup' ? 'Create your account' : authMode === 'reset' ? 'Reset your password' : authMode === 'update-password' ? 'Choose a new password' : 'Sign in to your account'}</h2>
-        <p className="auth-description">{authMode === 'signup' ? 'Set up your demo banking workspace in a moment.' : authMode === 'reset' ? 'We’ll email you a secure password reset link.' : authMode === 'update-password' ? 'Choose a strong password to secure your account.' : 'Your finances, all in one place.'}</p>
+        <p className="auth-description">{authMode === 'signup' ? 'Create your account to get started.' : authMode === 'reset' ? 'We’ll email you a secure password reset link.' : authMode === 'update-password' ? 'Choose a strong password to secure your account.' : 'Your finances, all in one place.'}</p>
         <form className="auth-form" onSubmit={doAuth}>
           {authMode === 'signup' && <label>Full name<input value={authName} onChange={e => setAuthName(e.target.value)} autoComplete="name" required minLength={2} placeholder="Your full name" /></label>}
           <label>Email address<input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} autoComplete="email" required placeholder="you@example.com" /></label>
-          {authMode !== 'reset' && <label>{authMode === 'update-password' ? 'New password' : 'Password'}<input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} required minLength={authMode === 'signup' || authMode === 'update-password' ? 8 : 1} placeholder={authMode === 'signup' || authMode === 'update-password' ? 'At least 8 characters' : 'Your password'} /></label>}
+          {authMode !== 'reset' && <label>{authMode === 'update-password' ? 'New password' : 'Password'}<span className="auth-password-wrap"><input type={showAuthPassword ? 'text' : 'password'} value={authPassword} onChange={e => setAuthPassword(e.target.value)} autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} required minLength={authMode === 'signup' || authMode === 'update-password' ? 8 : 1} placeholder={authMode === 'signup' || authMode === 'update-password' ? 'At least 8 characters' : 'Your password'} /><button type="button" className="auth-password-toggle" aria-label={showAuthPassword ? 'Hide password' : 'Show password'} onClick={() => setShowAuthPassword(value => !value)}>{showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>}
           {authMode === 'signin' && <button type="button" className="auth-inline-link" onClick={() => setAuthMode('reset')}>Forgot password?</button>}
           <button className="primary-button auth-submit" disabled={saving}>{saving && <LoaderCircle size={16} className="spin" />}{authMode === 'signup' ? 'Create account' : authMode === 'reset' ? 'Send reset link' : authMode === 'update-password' ? 'Update password' : 'Sign in'} <ArrowUpRight size={16} /></button>
         </form>
