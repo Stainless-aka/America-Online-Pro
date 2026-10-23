@@ -26,6 +26,106 @@ const navigation: { label: Page; icon: typeof LayoutDashboard }[] = [
 const money = (minor: number, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2 }).format(minor / 100)
 const dateLabel = (value: string) => new Date(value).toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' })
 
+
+type MarketQuote = { symbol: string; price: number | null; change: number | null; changePercent: number | null; currency: string | null; marketState: string; quoteTime?: string; error?: string }
+type InvestmentHolding = { id: string; symbol: string; quantity: number; average_cost: number; created_at: string }
+
+function InvestPage({ userId }: { userId: string }) {
+  const [holdings, setHoldings] = useState<InvestmentHolding[]>([])
+  const [quotes, setQuotes] = useState<Record<string, MarketQuote>>({})
+  const [symbol, setSymbol] = useState('AAPL')
+  const [quantity, setQuantity] = useState('1')
+  const [averageCost, setAverageCost] = useState('')
+  const [loadingHoldings, setLoadingHoldings] = useState(true)
+  const [refreshingQuotes, setRefreshingQuotes] = useState(false)
+  const [savingHolding, setSavingHolding] = useState(false)
+  const [investMessage, setInvestMessage] = useState('')
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+  const watchSymbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'SPY', 'GLD', 'TLT']
+  const allSymbols = [...new Set([...watchSymbols, ...holdings.map(item => item.symbol)])]
+
+  const loadHoldings = useCallback(async () => {
+    if (!supabase || !userId) { setHoldings([]); setLoadingHoldings(false); return }
+    const { data, error } = await supabase.from('investment_holdings')
+      .select('id,symbol,quantity,average_cost,created_at').eq('user_id', userId).order('created_at', { ascending: false })
+    if (error) setInvestMessage('Could not load holdings: ' + error.message)
+    else setHoldings((data || []) as InvestmentHolding[])
+    setLoadingHoldings(false)
+  }, [userId])
+
+  const loadQuotes = useCallback(async () => {
+    if (!supabase) { setInvestMessage('Supabase is not configured.'); return }
+    setRefreshingQuotes(true)
+    const { data, error } = await supabase.functions.invoke('market-quotes', { method: 'GET', body: undefined, headers: {}, query: { symbols: allSymbols.join(',') } } as never)
+    if (error) {
+      setInvestMessage('Live quotes unavailable right now. ' + error.message)
+    } else {
+      const list = (data?.quotes || []) as MarketQuote[]
+      setQuotes(Object.fromEntries(list.map(item => [item.symbol, item])))
+      setLastUpdated(data?.fetchedAt || new Date().toISOString())
+      setInvestMessage('')
+    }
+    setRefreshingQuotes(false)
+  }, [allSymbols.join(',')])
+
+  useEffect(() => { void loadHoldings() }, [loadHoldings])
+  useEffect(() => { void loadQuotes(); const timer = window.setInterval(() => void loadQuotes(), 60000); return () => window.clearInterval(timer) }, [loadQuotes])
+
+  const addHolding = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const ticker = symbol.trim().toUpperCase()
+    const units = Number(quantity)
+    const cost = Number(averageCost)
+    if (!/^[A-Z0-9.^=-]{1,15}$/.test(ticker)) { setInvestMessage('Enter a valid ticker symbol.'); return }
+    if (!Number.isFinite(units) || units <= 0 || !Number.isFinite(cost) || cost < 0) { setInvestMessage('Enter a positive quantity and a valid average purchase cost.'); return }
+    if (!supabase || !userId) { setInvestMessage('Sign in before adding a holding.'); return }
+    setSavingHolding(true); setInvestMessage('')
+    const { error } = await supabase.from('investment_holdings').upsert(
+      { user_id: userId, symbol: ticker, quantity: units, average_cost: cost, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,symbol' },
+    )
+    setSavingHolding(false)
+    if (error) { setInvestMessage('Could not save holding: ' + error.message); return }
+    setSymbol('AAPL'); setQuantity('1'); setAverageCost('')
+    await loadHoldings(); await loadQuotes()
+    setInvestMessage('Holding saved to your account.')
+  }
+
+  const removeHolding = async (id: string) => {
+    if (!supabase) return
+    const { error } = await supabase.from('investment_holdings').delete().eq('id', id).eq('user_id', userId)
+    if (error) { setInvestMessage('Could not remove holding: ' + error.message); return }
+    await loadHoldings()
+  }
+
+  const usd = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value)
+  const portfolioValue = holdings.reduce((sum, item) => sum + (quotes[item.symbol]?.price ?? 0) * Number(item.quantity), 0)
+  const costBasis = holdings.reduce((sum, item) => sum + Number(item.average_cost) * Number(item.quantity), 0)
+  const gainLoss = portfolioValue - costBasis
+
+  return <PageHeader kicker="LIVE MARKET DATA" title="Invest" subtitle="Track market quotes and maintain a personal holdings watchlist. Quotes are informational; this app does not execute trades.">
+    <div className="invest-live-page">
+      <div className="invest-live-disclosure"><ShieldCheck size={17}/><p><strong>Live market information · No brokerage connection</strong><br/>Quotes are fetched from Yahoo Finance chart data and may be delayed, unavailable, or subject to provider limits. Holdings and cost basis are entered by you; no securities are bought or sold here.</p></div>
+      <section className="invest-live-summary">
+        <article className="invest-live-summary-card invest-live-summary-main"><span>ESTIMATED HOLDINGS VALUE</span><strong>{usd(portfolioValue)}</strong><small>Based on latest available quotes for saved holdings</small></article>
+        <article className="invest-live-summary-card"><span>RECORDED COST BASIS</span><strong>{usd(costBasis)}</strong><small>Quantity × your average purchase cost</small></article>
+        <article className="invest-live-summary-card"><span>UNREALIZED GAIN / LOSS</span><strong className={gainLoss >= 0 ? 'invest-positive' : 'invest-negative'}>{gainLoss >= 0 ? '+' : '−'}{usd(Math.abs(gainLoss))}</strong><small>Estimate only; excludes fees and taxes</small></article>
+      </section>
+      <div className="invest-live-section-head"><div><span className="section-kicker">MARKET WATCH</span><h2>Live quotes</h2><p>Common US-listed market symbols. Refreshes automatically every 60 seconds.</p></div><button className="secondary-button" onClick={() => void loadQuotes()} disabled={refreshingQuotes}>{refreshingQuotes ? <LoaderCircle size={14} className="spin"/> : <RefreshCw size={14}/>} Refresh quotes</button></div>
+      <section className="content-card invest-quotes-card">
+        <div className="invest-quotes-table-wrap"><table className="invest-quotes-table"><thead><tr><th>Symbol</th><th>Last price</th><th>Change</th><th>Market status</th><th>Action</th></tr></thead><tbody>{allSymbols.map(ticker => { const quote = quotes[ticker]; return <tr key={ticker}><td><strong>{ticker}</strong><small>{ticker === 'SPY' ? 'S&P 500 ETF' : ticker === 'GLD' ? 'Gold ETF' : ticker === 'TLT' ? 'Treasury bond ETF' : 'US market'}</small></td><td>{quote?.price != null ? usd(quote.price) : '—'}</td><td className={quote?.change != null && quote.change < 0 ? 'invest-negative' : 'invest-positive'}>{quote?.change != null ? (quote.change >= 0 ? '+' : '−') + usd(Math.abs(quote.change)) + (quote.changePercent != null ? ' (' + quote.changePercent.toFixed(2) + '%)' : '') : quote?.error || 'Waiting for quote'}</td><td><span className="invest-market-state">{quote?.marketState || 'Loading'}</span></td><td><button className="invest-watch-action" onClick={() => { setSymbol(ticker); document.getElementById('invest-holding-symbol')?.focus() }}>Track</button></td></tr> })}</tbody></table></div>
+        <div className="invest-quotes-footer">{lastUpdated ? 'Last fetched ' + new Date(lastUpdated).toLocaleString() : 'Waiting for market data provider'} · Source: Yahoo Finance</div>
+      </section>
+      <div className="invest-live-section-head"><div><span className="section-kicker">YOUR PORTFOLIO</span><h2>Holdings tracker</h2><p>Record positions you already own to estimate market value and unrealized performance.</p></div></div>
+      <section className="invest-holdings-layout">
+        <form className="content-card invest-holding-form" onSubmit={addHolding}><span className="section-kicker">ADD OR UPDATE POSITION</span><label htmlFor="invest-holding-symbol">Ticker symbol</label><input id="invest-holding-symbol" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} required maxLength={15} placeholder="e.g. AAPL"/><label htmlFor="invest-holding-quantity">Quantity / shares</label><input id="invest-holding-quantity" type="number" min="0.00000001" step="any" value={quantity} onChange={e => setQuantity(e.target.value)} required/><label htmlFor="invest-holding-cost">Average purchase price (USD)</label><input id="invest-holding-cost" type="number" min="0" step="0.000001" value={averageCost} onChange={e => setAverageCost(e.target.value)} required placeholder="e.g. 175.50"/><small>Saving an existing symbol updates its quantity and average cost.</small><button className="primary-button" disabled={savingHolding}>{savingHolding ? <LoaderCircle size={15} className="spin"/> : <Plus size={15}/>} Save holding</button>{investMessage && <p className="invest-feedback" role="status">{investMessage}</p>}</form>
+        <section className="content-card invest-holdings-card"><div className="invest-holdings-heading"><div><span className="section-kicker">SAVED POSITIONS</span><h3>Your holdings</h3></div><button className="text-button" onClick={() => void loadHoldings()} disabled={loadingHoldings}><RefreshCw size={14}/> Refresh</button></div>{loadingHoldings ? <div className="empty-state"><LoaderCircle className="spin" size={22}/><p>Loading holdings…</p></div> : holdings.length === 0 ? <div className="empty-state"><Wallet size={23}/><strong>No holdings recorded</strong><p>Add a position you already own to calculate its estimated value. This will not buy the asset.</p></div> : <div className="invest-saved-list">{holdings.map(item => { const quote = quotes[item.symbol]; const marketValue = (quote?.price ?? 0) * Number(item.quantity); const basis = Number(item.average_cost) * Number(item.quantity); return <article className="invest-saved-row" key={item.id}><div><strong>{item.symbol}</strong><small>{Number(item.quantity).toLocaleString()} units · Cost {usd(basis)}</small></div><div><strong>{quote?.price != null ? usd(marketValue) : 'Quote pending'}</strong><small className={(marketValue - basis) >= 0 ? 'invest-positive' : 'invest-negative'}>{quote?.price != null ? ((marketValue - basis) >= 0 ? '+' : '−') + usd(Math.abs(marketValue - basis)) : 'Not yet valued'}</small></div><button className="invest-remove-button" aria-label={'Remove ' + item.symbol} onClick={() => void removeHolding(item.id)}><X size={15}/></button></article> })}</div>}</section>
+      </section>
+      <p className="invest-live-disclaimer"><ShieldCheck size={15}/> Informational market data only, not investment advice. Quotes can be delayed or incorrect. This portfolio tracker does not connect to a broker and cannot place orders, custody assets, or verify ownership of recorded holdings.</p>
+    </div>
+  </PageHeader>
+}
+
 function App() {
   const [page, setPage] = useState<Page>('Overview')
   const [session, setSession] = useState<Session | null>(null)
@@ -246,18 +346,7 @@ function App() {
 
         {page === 'Loans' && <LoansPage userId={session?.user.id || ''} />}
 
-        {page === 'Invest' && <PageHeader kicker="WEALTH TOOLS" title="Invest" subtitle="A preview of investment tracking tools for this simulated account. No investments can be purchased here."><div className="invest-page">
-          <section className="invest-hero">
-            <div className="invest-hero-copy"><span className="invest-overline"><TrendingUp size={14} /> WEALTH WORKSPACE</span><h2>Build a clearer view<br />of your <span>investments.</span></h2><p>Explore the tools planned for tracking portfolio allocation, understanding market movement, and reviewing holdings — all without placing trades.</p><div className="invest-preview-note"><ShieldCheck size={16} /><span>Tracking preview only. No purchases, trades, or real investment accounts.</span></div></div>
-            <div className="invest-hero-art" aria-hidden="true"><div className="invest-orbit invest-orbit-one" /><div className="invest-orbit invest-orbit-two" /><div className="invest-art-core"><TrendingUp size={38} strokeWidth={1.5} /></div><div className="invest-art-chip invest-chip-top"><Activity size={14} /><span>Market insights</span></div><div className="invest-art-chip invest-chip-bottom"><Wallet size={14} /><span>Portfolio tools</span></div></div>
-          </section>
-          <div className="invest-section-title"><div><span className="section-kicker">YOUR WEALTH TOOLS</span><h2>Explore what’s planned</h2></div><span className="invest-preview-badge"><span /> Preview experience</span></div>
-          <section className="invest-tool-grid">
-            <article className="content-card invest-tool-card"><div className="invest-tool-top"><span className="invest-tool-icon"><TrendingUp size={20} /></span><span className="pill pill-green">Coming soon</span></div><span className="section-kicker">PORTFOLIO TRACKING</span><h3>Portfolio overview</h3><p className="muted-text">Portfolio allocation, performance charts, and holdings will appear here when the investment tracking module is available.</p><div className="invest-placeholder-chart" aria-hidden="true"><div className="invest-chart-labels"><span>Allocation</span><span>Preview</span></div><div className="invest-chart-bars"><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div><div className="invest-chart-line"><span /><span /><span /><span /><span /><span /><span /></div></div><div className="invest-tool-foot"><span><LockKeyhole size={14} /> Not connected to a brokerage</span><ArrowUpRight size={16} /></div></article>
-            <article className="content-card invest-tool-card"><div className="invest-tool-top"><span className="invest-tool-icon invest-tool-icon-warm"><Activity size={20} /></span><span className="pill pill-green">Preview only</span></div><span className="section-kicker">MARKET RESEARCH</span><h3>Market watchlist</h3><p className="muted-text">Follow sample assets and learn about market movements without placing trades or connecting an investment account.</p><div className="invest-watchlist-preview"><div className="invest-watch-row"><span className="invest-watch-symbol">EQ</span><span><strong>Equities</strong><small>Sample asset category</small></span><span className="invest-watch-status">Watch</span></div><div className="invest-watch-row"><span className="invest-watch-symbol invest-watch-symbol-alt">FI</span><span><strong>Fixed income</strong><small>Sample asset category</small></span><span className="invest-watch-status">Watch</span></div><div className="invest-watch-row"><span className="invest-watch-symbol invest-watch-symbol-third">CM</span><span><strong>Commodities</strong><small>Sample asset category</small></span><span className="invest-watch-status">Watch</span></div></div><div className="invest-tool-foot"><span><ShieldCheck size={14} /> No live prices or trading</span><ArrowUpRight size={16} /></div></article>
-          </section>
-          <p className="invest-page-disclaimer"><ShieldCheck size={15} /> America Online Pro is a simulated banking experience. This page is for educational preview purposes and does not provide investment advice.</p>
-        </div></PageHeader>}
+        {page === 'Invest' && <InvestPage userId={session.user.id} />}
 
         {page === 'Cards' && <PageHeader kicker="PAYMENT TOOLS" title="Cards" subtitle="View your profile and linked account details in one place."><div className="cards-layout"><div className="cards-primary-column"><article className="demo-card-visual account-linked-card"><div className="demo-card-top"><span className="brand-name">america<span>online</span><small>PRO</small></span><span className="card-chip" /></div><div className="linked-card-account"><small>LINKED ACCOUNT</small><strong>{showCardDetails ? (activeAccount?.account_number || 'No account linked') : activeAccount ? `•••• •••• •••• ${activeAccount.account_number.slice(-4)}` : 'No account linked'}</strong></div><div className="demo-card-bottom"><div><small>ACCOUNT HOLDER</small><strong>{profileName.toUpperCase()}</strong></div><div><small>ACCOUNT STATUS</small><strong>{(activeAccount?.status || 'UNAVAILABLE').toUpperCase()}</strong></div><span className="card-network">{activeAccount?.currency || '—'}</span></div></article><div className="card-controls"><button className="secondary-button" onClick={() => setShowCardDetails(value => !value)}>{showCardDetails ? <EyeOff size={15} /> : <Eye size={15} />}{showCardDetails ? 'Hide details' : 'Show details'}</button><button className="secondary-button" disabled={!activeAccount?.account_number} onClick={() => { if (!activeAccount?.account_number) return; void navigator.clipboard.writeText(activeAccount.account_number).then(() => announce('success', 'Linked account number copied.')).catch(() => announce('error', 'Could not copy account number.')) }}><Check size={15} /> Copy account number</button></div><section className="content-card card-details-panel"><div className="card-details-heading"><div><span className="section-kicker">ACCOUNT INFORMATION</span><h3>Linked account details</h3></div><span className={`pill ${activeAccount?.status === 'active' ? 'pill-green' : ''}`}>{activeAccount?.status || 'No account'}</span></div>{[{label:'Full name',value:profileName || 'Not provided'},{label:'Email address',value:session.user.email || 'Not provided'},{label:'Account name',value:activeAccount?.display_name?.replace(/\s*demo\b/ig, '') || 'No account linked'},{label:'Account number',value:activeAccount ? (showCardDetails ? activeAccount.account_number : `••••••••${activeAccount.account_number.slice(-4)}`) : 'No account linked'},{label:'Currency',value:activeAccount?.currency || 'Not assigned'}].map(item => <div className="card-detail-row" key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>)}</section></div><div className="content-card card-explainer"><div className="note-icon"><CreditCard size={19} /></div><h3>Card preview</h3><p>Your profile and linked account details are shown here for convenience. This is a card preview, not an issued payment card. No real card number, CVV or payment capability exists.</p><div className="form-notice"><ShieldCheck size={17} /><span>Account details are shown only to the signed-in user. Use Show details to reveal or hide the linked account number.</span></div><button className="secondary-button" onClick={() => go('Accounts')}><Wallet size={15} /> View account details</button><button className="secondary-button card-help-button" onClick={() => go('Help center')}><CircleHelp size={15} /> Learn more</button></div></div></PageHeader>}
 
