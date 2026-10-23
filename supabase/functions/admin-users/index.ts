@@ -57,8 +57,6 @@ Deno.serve(async (req: Request) => {
         full_name: profile?.full_name || String(u.user_metadata?.full_name || ""),
         roles: (roles || []).map((r) => r.role), account_number: account?.account_number || null,
       };
-    }).catch((error) => {
-      throw error;
     }));
     return reply(200, { users, total: data.total ?? users.length });
   }
