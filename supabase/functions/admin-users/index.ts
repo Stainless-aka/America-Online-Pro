@@ -42,17 +42,23 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (error) return reply(400, { error: error.message });
     const users = await Promise.all((data.users || []).map(async (u) => {
-      const [{ data: roles }, { data: profile }, { data: account }] = await Promise.all([
+      const [{ data: roles, error: rolesError }, { data: profile, error: profileError }, { data: account, error: accountError }] = await Promise.all([
         adminClient.from("user_roles").select("role").eq("user_id", u.id),
         adminClient.from("profiles").select("full_name").eq("id", u.id).maybeSingle(),
         adminClient.from("accounts").select("account_number").eq("owner_id", u.id).limit(1).maybeSingle(),
       ]);
+      // A missing related record should not crash the entire user list.
+      if (rolesError) console.error("admin-users: roles lookup failed", rolesError.message);
+      if (profileError) console.error("admin-users: profile lookup failed", profileError.message);
+      if (accountError) console.error("admin-users: account lookup failed", accountError.message);
       return {
         id: u.id, email: u.email || "", created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at || null, email_confirmed_at: u.email_confirmed_at || null,
         full_name: profile?.full_name || String(u.user_metadata?.full_name || ""),
         roles: (roles || []).map((r) => r.role), account_number: account?.account_number || null,
       };
+    }).catch((error) => {
+      throw error;
     }));
     return reply(200, { users, total: data.total ?? users.length });
   }
@@ -80,14 +86,15 @@ Deno.serve(async (req: Request) => {
     if (accountError) return reply(400, { error: accountError.message });
     const accountIds = (accounts || []).map((a) => a.id as string);
 
-    const { data: transfers, error: transferReadError } = await adminClient.from("transfers").select("id")
+    const transferQuery = adminClient.from("transfers").select("id")
       .or(accountIds.length
         ? `actor_id.eq.${userId},source_account_id.in.(${accountIds.join(",")}),destination_account_id.in.(${accountIds.join(",")})`
         : `actor_id.eq.${userId}`);
+    const { data: transfers, error: transferReadError } = await transferQuery;
     if (transferReadError) return reply(400, { error: transferReadError.message });
     const transferIds = [...new Set((transfers || []).map((t) => t.id as string))];
 
-    // Collect every related ledger transaction before deleting any ledger entries.
+    // Collect all related ledger transaction IDs before deleting any ledger entries.
     const ledgerIdSet = new Set<string>();
     if (accountIds.length) {
       const { data: entries, error } = await adminClient.from("ledger_entries")
@@ -103,7 +110,7 @@ Deno.serve(async (req: Request) => {
     }
     const ledgerIds = [...ledgerIdSet];
 
-    // Respect foreign keys: ledger entries -> ledger transactions -> transfers -> accounts.
+    // Delete in foreign-key order: entries -> ledger transactions -> transfers -> accounts.
     if (accountIds.length) {
       const { error } = await adminClient.from("ledger_entries").delete().in("account_id", accountIds);
       if (error) return reply(400, { error: error.message });
