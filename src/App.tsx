@@ -292,7 +292,7 @@ function App() {
     <div className="auth-shell">
       <section className="auth-brand-panel">
         <a className="brand auth-brand" href="#signin"><span className="brand-mark"><span /></span><span className="brand-name">america<span>online</span><small>PRO</small></span></a>
-        <div className="auth-pitch"><span className="section-kicker">YOUR MONEY, IN MOTION</span><h1>Move with<br />confidence<span>.</span></h1><p>A clean, simple place to understand your money. Manage your account with a clear, simple digital banking experience.</p><div className="auth-assurance"><ShieldCheck size={17} /> Private by design. Secured by Supabase.</div></div>
+        <div className="auth-pitch"><span className="section-kicker">YOUR MONEY, IN MOTION</span><h1>Move with<br />confidence<span>.</span></h1><p>A clean, simple place to understand your money. Manage your account with a clear, simple digital banking experience.</p><div className="auth-assurance"><ShieldCheck size={17} /> Private by design. Built with care.</div></div>
         <div className="auth-panel-foot">© 2026 America Online Pro. All rights reserved.</div>
       </section>
       <section className="auth-form-panel"><div className="auth-form-wrap">
