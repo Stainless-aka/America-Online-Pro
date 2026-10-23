@@ -140,7 +140,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [search, setSearch] = useState('')
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'update-password'>('signin')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'update-password'>(() => new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
@@ -210,11 +210,11 @@ function App() {
     setSaving(true)
     let error: { message: string } | null = null
     if (authMode === 'signup') {
-      const result = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: authName }, emailRedirectTo: window.location.origin } })
+      const result = await supabase.auth.signUp({ email: authEmail, password: authPassword, options: { data: { full_name: authName }, emailRedirectTo: window.location.origin + '/app' } })
       error = result.error
       if (!error && !result.data.session) announce('success', 'Account created. Check your email to confirm your address, then sign in.')
     } else if (authMode === 'reset') {
-      const result = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: window.location.origin })
+      const result = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: window.location.origin + '/app' })
       error = result.error
       if (!error) announce('success', 'Password reset instructions have been sent if that email is registered.')
     } else if (authMode === 'update-password') {
