@@ -112,7 +112,7 @@ function InvestPage({ userId }: { userId: string }) {
   const costBasis = holdings.reduce((sum, item) => sum + Number(item.average_cost) * Number(item.quantity), 0)
   const gainLoss = portfolioValue - costBasis
 
-  return <PageHeader kicker="LIVE MARKET DATA" title="Invest" subtitle="Track market quotes and maintain a personal holdings watchlist. Quotes are informational; this app does not execute trades.">
+  return <PageHeader kicker="LIVE MARKET DATA" title="Invest" subtitle="Monitor current market prices and track the value and performance of your investment holdings in one place. View market data, manage your portfolio records, and follow price movements as they happen.">
     <div className="invest-live-page">
       
       <section className="invest-live-summary">
