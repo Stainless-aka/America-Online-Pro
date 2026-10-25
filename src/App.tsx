@@ -429,6 +429,22 @@ function SupportChatWidget({ userId }: { userId: string }) {
     return () => { void supabase.removeChannel(channel) }
   }, [open, loadChat, userId, conversation?.id])
 
+  const startNewChat = async () => {
+    if (!supabase || !userId || loadingChat || sending) return
+    setLoadingChat(true); setChatError('')
+    const { data, error } = await supabase.from('support_conversations')
+      .insert({ user_id: userId, subject: 'Customer support' })
+      .select('id,user_id,subject,status,created_at,updated_at').single()
+    if (error) {
+      setChatError(error.message)
+    } else {
+      setConversation(data as SupportConversation)
+      setMessages([])
+      setDraft('')
+    }
+    setLoadingChat(false)
+  }
+
   const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const body = draft.trim()
@@ -441,8 +457,8 @@ function SupportChatWidget({ userId }: { userId: string }) {
   }
 
   return <div className="support-chat-widget">
-    {open && <section className="support-chat-panel" aria-label="Customer support chat"><header className="support-chat-header"><span className="support-chat-mark"><MessageCircle size={19}/></span><div><strong>Customer support</strong><small><i/> Usually replies here</small></div><button type="button" aria-label="Close support chat" onClick={() => setOpen(false)}><X size={18}/></button></header>
-      <div className="support-chat-messages">{loadingChat && !messages.length ? <p className="support-chat-empty">Connecting to support…</p> : !messages.length ? <p className="support-chat-empty">Hi! Send us a message and our team will reply here.</p> : messages.map(message => <div key={message.id} className={'support-chat-bubble ' + (message.sender_id === userId ? 'mine' : 'theirs')}><p>{message.body}</p><small>{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small></div>)}{chatError && <p className="support-chat-error">{chatError}</p>}</div>
+    {open && <section className="support-chat-panel" aria-label="Customer support chat"><header className="support-chat-header"><span className="support-chat-mark"><MessageCircle size={19}/></span><div><strong>Customer support</strong><small><i/> Chat with our team</small></div><button type="button" className="support-chat-new" onClick={() => void startNewChat()} disabled={loadingChat || sending}><Plus size={14}/> New chat</button><button type="button" aria-label="Close support chat" onClick={() => setOpen(false)}><X size={18}/></button></header>
+      <div className="support-chat-messages">{loadingChat && !messages.length ? <p className="support-chat-empty">Connecting to support…</p> : !messages.length ? <><p className="support-chat-empty">Hi! Choose a quick question or write your own message. Our team will reply here.</p><div className="support-chat-quick-actions"><span>QUICK QUESTIONS</span>{['I need help with a transfer','I have a question about my account','I need help with a card','I have a question about a loan','I want to report a problem'].map(question => <button key={question} type="button" onClick={() => setDraft(question)}>{question}<ChevronDown size={13}/></button>)}</div></> : messages.map(message => <div key={message.id} className={'support-chat-bubble ' + (message.sender_id === userId ? 'mine' : 'theirs')}><p>{message.body}</p><small>{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small></div>)}{chatError && <p className="support-chat-error">{chatError}</p>}</div>
       <form className="support-chat-compose" onSubmit={sendMessage}><textarea value={draft} onChange={e => setDraft(e.target.value)} maxLength={4000} rows={2} placeholder="Write your message…" aria-label="Message to support" required/><button type="submit" disabled={sending || !draft.trim() || !conversation} aria-label="Send message">{sending ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>}</button></form>
     </section>}
     <button className="support-chat-launcher" type="button" onClick={() => setOpen(value => !value)} aria-label={open ? 'Close support chat' : 'Contact customer support'}><span>{open ? <X size={22}/> : <MessageCircle size={22}/>}</span>{!open && <span className="support-chat-launcher-label">Need help?</span>}</button>
