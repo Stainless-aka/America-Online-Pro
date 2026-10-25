@@ -198,7 +198,15 @@ function App() {
     setLoading(false)
   }, [session])
 
-  useEffect(() => { void loadData() }, [loadData])
+  useEffect(() => {
+    void loadData()
+    if (!supabase || !session?.user) return
+    const channel = supabase.channel('account-notifications-' + session.user.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_entries' }, () => { void loadData() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_transactions' }, () => { void loadData() })
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [loadData, session?.user?.id])
 
   const balances = useMemo(() => accounts.map(account => ({
     ...account,
@@ -408,7 +416,18 @@ function SupportChatWidget({ userId }: { userId: string }) {
     setLoadingChat(false)
   }, [userId])
 
-  useEffect(() => { if (open) { void loadChat(true); const timer = window.setInterval(() => void loadChat(false), 5000); return () => window.clearInterval(timer) } }, [open, loadChat])
+  useEffect(() => {
+    if (!open || !supabase) return
+    void loadChat(true)
+    const channel = supabase.channel('customer-support-chat-' + userId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, payload => {
+        const changed = payload.new as Partial<SupportMessage>
+        if (!changed.conversation_id || changed.conversation_id === conversation?.id) void loadChat(false)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations', filter: 'user_id=eq.' + userId }, () => { void loadChat(false) })
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [open, loadChat, userId, conversation?.id])
 
   const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
