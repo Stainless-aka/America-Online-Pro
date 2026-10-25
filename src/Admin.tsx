@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X } from 'lucide-react'
+import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X, HandCoins, ClipboardList } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './admin.css'
 
@@ -9,6 +9,10 @@ type ManagedUser = {
   email_confirmed_at: string | null; full_name: string; roles: string[]; account_number: string | null
 }
 type Toast = { kind: 'success' | 'error'; text: string }
+type LoanApplication = { id: string; user_id: string; customer_email: string; customer_name: string; amount: number; term_months: number; annual_rate: number; purpose: string; employment_status: string; monthly_income: number; status: 'submitted' | 'under_review' | 'approved' | 'declined' | 'closed'; created_at: string; updated_at: string }
+const loanStatuses: LoanApplication['status'][] = ['submitted', 'under_review', 'approved', 'declined', 'closed']
+const loanStatusLabel = (status: LoanApplication['status']) => ({ submitted: 'Submitted', under_review: 'Under review', approved: 'Approved', declined: 'Declined', closed: 'Closed' })[status]
+const formatLoanMoney = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value))
 const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`
 
 export default function Admin() {
@@ -24,6 +28,9 @@ export default function Admin() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [sessionEmail, setSessionEmail] = useState('')
   const [total, setTotal] = useState(0)
+  const [activeTab, setActiveTab] = useState<'users' | 'loans'>('users')
+  const [loans, setLoans] = useState<LoanApplication[]>([])
+  const [loanDrafts, setLoanDrafts] = useState<Record<string, LoanApplication['status']>>({})
 
   const callAdmin = useCallback(async (payload: Record<string, string>) => {
     if (!supabase) throw new Error('Supabase is not configured.')
@@ -38,6 +45,34 @@ export default function Admin() {
     if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`)
     return data
   }, [])
+
+  const loadLoans = useCallback(async () => {
+    setBusy(true)
+    try {
+      const data = await callAdmin({ action: 'loans_list' })
+      const rows = (data.loans || []) as LoanApplication[]
+      setLoans(rows)
+      setLoanDrafts(Object.fromEntries(rows.map(loan => [loan.id, loan.status])))
+      setIsAdmin(true)
+    } catch (error) {
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not load loan applications.' })
+      setIsAdmin(false)
+    } finally { setBusy(false); setReady(true) }
+  }, [callAdmin])
+
+  const updateLoanStatus = async (loan: LoanApplication) => {
+    const status = loanDrafts[loan.id] || loan.status
+    if (status === loan.status) return
+    setBusy(true)
+    try {
+      await callAdmin({ action: 'loan_update', loanId: loan.id, status })
+      setLoans(current => current.map(item => item.id === loan.id ? { ...item, status, updated_at: new Date().toISOString() } : item))
+      setToast({ kind: 'success', text: 'Application ' + loan.id.slice(0, 8).toUpperCase() + ' updated to ' + loanStatusLabel(status) + '.' })
+    } catch (error) {
+      setLoanDrafts(current => ({ ...current, [loan.id]: loan.status }))
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not update loan application.' })
+    } finally { setBusy(false) }
+  }
 
   const loadUsers = useCallback(async () => {
     setBusy(true)
@@ -107,16 +142,18 @@ export default function Admin() {
     <aside className="admin-sidebar">
       <a href="/" className="admin-brand"><span className="admin-brand-icon">A</span><span>america<span>online</span><small>PRO ADMIN</small></span></a>
       <div className="admin-side-label">ADMINISTRATION</div>
-      <div className="admin-side-item active"><Users size={17} /> User management</div>
+      <button className={'admin-side-item ' + (activeTab === 'users' ? 'active' : '')} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={17} /> User management</button>
+      <button className={'admin-side-item ' + (activeTab === 'loans' ? 'active' : '')} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={17} /> Loan applications</button>
       <div className="admin-side-item"><ShieldCheck size={17} /> Access controlled</div>
       <div className="admin-sidebar-foot"><span className="admin-avatar">{sessionEmail.slice(0,1).toUpperCase() || 'A'}</span><div><strong>{sessionEmail || 'Not signed in'}</strong><small>Administrator portal</small></div><button aria-label="Sign out" onClick={() => void signOut()}><LogOut size={16} /></button></div>
     </aside>
     <main className="admin-main">
       <header className="admin-topbar"><a href="/" className="admin-back"><ArrowLeft size={16} /> Main application</a><div className="admin-secure"><ShieldCheck size={15} /> Restricted access</div></header>
       <div className="admin-content">
-        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>User management</h1><p>Create, review, and remove America Online Pro simulation users.</p></div><button className="admin-refresh" onClick={() => void loadUsers()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
+        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : 'Loan applications'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : 'Review customer loan requests and manage their application status.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : void loadLoans()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
         {toast && <div className={`admin-toast ${toast.kind}`}>{toast.kind === 'success' ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}<span>{toast.text}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
         {!isAdmin ? <section className="admin-access-card"><span className="admin-access-icon"><ShieldCheck size={24} /></span><h2>Administrator access required</h2><p>This portal is protected by Supabase. Your account must have the <code>admin</code> role in <code>public.user_roles</code>. The page does not grant administrator privileges by itself.</p><p className="admin-current-user">Signed in as: <strong>{sessionEmail || 'No active session'}</strong></p><button className="admin-secondary" onClick={() => window.location.href = '/'}>Return to application</button></section> : <>
+{activeTab === 'users' ? <>
           <section className="admin-stats"><article><span className="admin-stat-icon"><Users size={18} /></span><div><small>REGISTERED USERS</small><strong>{total}</strong><span>First 200 loaded from Supabase Auth</span></div></article><article><span className="admin-stat-icon green"><Activity size={18} /></span><div><small>FILTERED RESULTS</small><strong>{filteredUsers.length}</strong><span>Matching your search</span></div></article></section>
           <section className="admin-users-card"><div className="admin-table-heading"><div><h2>All users</h2><p>Review accounts and access details.</p></div><button className="admin-primary" onClick={() => setShowCreate(!showCreate)}><Plus size={16} /> Create user</button></div>
             {showCreate && <form className="admin-create-form" onSubmit={createUser}><div className="admin-form-title"><div><strong>Create a user</strong><p>Creates a confirmed login and a new account with a zero balance.</p></div><button type="button" aria-label="Close form" onClick={() => setShowCreate(false)}><X size={16} /></button></div><div className="admin-form-grid"><label>Full name<input required minLength={2} maxLength={100} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Customer name" /></label><label>Email address<input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="customer@example.com" /></label><label className="admin-password-field">Temporary password<input required type="password" minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" /><small>Share securely and ask the user to change it after signing in.</small></label></div><div className="admin-form-actions"><button type="button" className="admin-secondary" onClick={() => setShowCreate(false)}>Cancel</button><button className="admin-primary" disabled={busy}>{busy ? <LoaderCircle size={15} className="admin-spin" /> : <Plus size={15} />} Create account</button></div></form>}
@@ -124,7 +161,12 @@ export default function Admin() {
             <div className="admin-table-wrap"><table><thead><tr><th>USER</th><th>ACCOUNT NUMBER</th><th>ROLE</th><th>CREATED</th><th>LAST SIGN IN</th><th>ACTION</th></tr></thead><tbody>{filteredUsers.map(user => <tr key={user.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(user.full_name || user.email).slice(0,1).toUpperCase()}</span><div><strong>{user.full_name || 'Unnamed user'}</strong><small>{user.email}</small></div></div></td><td><code>{user.account_number || 'Not assigned'}</code></td><td><span className={`admin-role ${user.roles.includes('admin') ? 'admin-role-admin' : ''}`}>{user.roles.join(', ') || 'customer'}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}</td><td><button className="admin-delete" disabled={busy} title="Delete user" aria-label={`Delete ${user.email}`} onClick={() => void deleteUser(user)}><Trash2 size={16} /></button></td></tr>)}</tbody></table>{!filteredUsers.length && <div className="admin-empty"><Users size={25} /><strong>No users found</strong><span>Try a different search or create a user.</span></div>}</div>
             <div className="admin-table-foot"><span><ShieldCheck size={14} /> User management actions are server-validated.</span><span>Simulation environment only</span></div>
           </section>
-        </>}
+
+          </> : <section className="admin-users-card admin-loans-card">
+            <div className="admin-table-heading"><div><h2>Customer loan applications</h2><p>Review requested amounts, income, purpose and update each application status.</p></div><span className="admin-role">{loans.length} application{loans.length === 1 ? '' : 's'}</span></div>
+            <div className="admin-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>REQUESTED AMOUNT</th><th>TERM / RATE</th><th>PURPOSE</th><th>MONTHLY INCOME</th><th>SUBMITTED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{loans.map(loan => <tr key={loan.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(loan.customer_name || loan.customer_email).slice(0,1).toUpperCase()}</span><div><strong>{loan.customer_name}</strong><small>{loan.customer_email}</small><small>Ref: {loan.id.slice(0,8).toUpperCase()}</small></div></div></td><td><strong>{formatLoanMoney(Number(loan.amount))}</strong></td><td>{loan.term_months} months<br />{Number(loan.annual_rate)}% APR</td><td>{loan.purpose}<br /><small>{loan.employment_status}</small></td><td>{formatLoanMoney(Number(loan.monthly_income))}</td><td>{new Date(loan.created_at).toLocaleDateString()}</td><td><span className={'admin-role ' + (loan.status === 'approved' ? 'admin-role-admin' : '')}>{loanStatusLabel(loan.status)}</span></td><td><div className="admin-loan-action"><select aria-label={'Status for application ' + loan.id} value={loanDrafts[loan.id] || loan.status} disabled={busy} onChange={e => setLoanDrafts(current => ({ ...current, [loan.id]: e.target.value as LoanApplication['status'] }))}>{loanStatuses.map(status => <option key={status} value={status}>{loanStatusLabel(status)}</option>)}</select><button className="admin-primary" disabled={busy || (loanDrafts[loan.id] || loan.status) === loan.status} onClick={() => void updateLoanStatus(loan)}>Save</button></div></td></tr>)}</tbody></table>{!loans.length && <div className="admin-empty"><ClipboardList size={25} /><strong>No loan applications yet</strong><span>Customer submissions will appear here.</span></div>}</div>
+            <div className="admin-table-foot"><span><ShieldCheck size={14} /> Changes are validated by the administrator backend.</span><span>Approval records a status only; it does not disburse funds.</span></div>
+          </section>}
         <footer className="admin-footer">America Online Pro · Administrative tools · Simulation only</footer>
       </div>
     </main>
