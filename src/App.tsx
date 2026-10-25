@@ -210,11 +210,12 @@ function App() {
   useEffect(() => {
     void loadData()
     if (!supabase || !session?.user) return
-    const channel = supabase.channel('account-notifications-' + session.user.id)
+    const client = supabase
+    const channel = client.channel('account-notifications-' + session.user.id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_entries' }, () => { void loadData() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ledger_transactions' }, () => { void loadData() })
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => { void client.removeChannel(channel) }
   }, [loadData, session?.user?.id])
 
   const balances = useMemo(() => accounts.map(account => ({
