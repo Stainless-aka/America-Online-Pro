@@ -597,14 +597,6 @@ function LoansPage({ userId }: { userId: string }) {
       subtitle="Calculate potential repayments, submit an application, and track your application history."
       action={<button className="secondary-button" onClick={() => void loadApplications()} disabled={loadingApplications}><RefreshCw size={14} /> Refresh</button>}
     >
-      <div className="loan-disclosure">
-        <ShieldCheck size={18} />
-        <div>
-          <strong>Application information</strong>
-          <p>Repayments are estimates, not loan offers. This platform does not perform credit checks, issue lending decisions, or disburse funds.</p>
-        </div>
-      </div>
-
       <section className="loan-summary-grid">
         <article className="loan-summary-card loan-summary-featured">
           <span>ESTIMATED MONTHLY PAYMENT</span>
