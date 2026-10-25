@@ -89,9 +89,10 @@ export default function Admin() {
 
   useEffect(() => {
     if (activeTab !== 'support' || !supabase) return
+    const client = supabase
     void loadSupport()
     if (selectedThreadId) void loadSupportMessages(selectedThreadId)
-    const channel = supabase.channel('admin-support-inbox-live')
+    const channel = client.channel('admin-support-inbox-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, payload => {
         const changed = payload.new as { conversation_id?: string } | undefined
         void loadSupport()
@@ -101,7 +102,7 @@ export default function Admin() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations' }, () => { void loadSupport() })
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => { void client.removeChannel(channel) }
   }, [activeTab, selectedThreadId, loadSupportMessages, loadSupport])
 
   const replyToSupport = async (event: FormEvent<HTMLFormElement>) => {
