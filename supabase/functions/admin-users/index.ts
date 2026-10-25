@@ -138,5 +138,51 @@ Deno.serve(async (req: Request) => {
     if (deleteUserError) return reply(400, { error: deleteUserError.message });
     return reply(200, { message: "User and associated demo records deleted." });
   }
+
+  if (body.action === "loans_list") {
+    const { data: applications, error: applicationsError } = await adminClient
+      .from("loan_applications")
+      .select("id,user_id,amount,term_months,annual_rate,purpose,employment_status,monthly_income,status,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (applicationsError) return reply(400, { error: applicationsError.message });
+
+    const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (authError) return reply(400, { error: authError.message });
+    const userMap = new Map((authData.users || []).map((u) => [u.id, {
+      email: u.email || "",
+      full_name: String(u.user_metadata?.full_name || ""),
+    }]));
+    const userIds = [...new Set((applications || []).map((app) => app.user_id as string))];
+    const { data: profiles, error: profilesError } = userIds.length
+      ? await adminClient.from("profiles").select("id,full_name").in("id", userIds)
+      : { data: [], error: null };
+    if (profilesError) console.error("admin-users: loan profile lookup failed", profilesError.message);
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p.full_name || ""]));
+    const loans = (applications || []).map((app) => ({
+      ...app,
+      customer_email: userMap.get(app.user_id)?.email || "Unknown customer",
+      customer_name: profileMap.get(app.user_id) || userMap.get(app.user_id)?.full_name || "Customer",
+    }));
+    return reply(200, { loans, total: loans.length });
+  }
+
+  if (body.action === "loan_update") {
+    const loanId = body.loanId?.trim();
+    const status = body.status?.trim();
+    const allowedStatuses = ["submitted", "under_review", "approved", "declined", "closed"];
+    if (!loanId) return reply(400, { error: "Select a loan application." });
+    if (!status || !allowedStatuses.includes(status)) return reply(400, { error: "Choose a valid loan status." });
+    const { data: loan, error: loanError } = await adminClient
+      .from("loan_applications")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", loanId)
+      .select("id,status")
+      .maybeSingle();
+    if (loanError) return reply(400, { error: loanError.message });
+    if (!loan) return reply(404, { error: "Loan application not found." });
+    return reply(200, { loan, message: "Loan application status updated." });
+  }
+
   return reply(400, { error: "Unsupported action." });
 });
