@@ -87,7 +87,22 @@ export default function Admin() {
     else setSupportMessages((data || []) as typeof supportMessages)
   }, [])
 
-  useEffect(() => { if (activeTab === 'support' && selectedThreadId) { void loadSupportMessages(selectedThreadId); const timer = window.setInterval(() => void loadSupportMessages(selectedThreadId), 5000); return () => window.clearInterval(timer) } }, [activeTab, selectedThreadId, loadSupportMessages])
+  useEffect(() => {
+    if (activeTab !== 'support' || !supabase) return
+    void loadSupport()
+    if (selectedThreadId) void loadSupportMessages(selectedThreadId)
+    const channel = supabase.channel('admin-support-inbox-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, payload => {
+        const changed = payload.new as { conversation_id?: string } | undefined
+        void loadSupport()
+        if (!changed?.conversation_id || changed.conversation_id === selectedThreadId) {
+          if (selectedThreadId) void loadSupportMessages(selectedThreadId)
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations' }, () => { void loadSupport() })
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [activeTab, selectedThreadId, loadSupportMessages, loadSupport])
 
   const replyToSupport = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
