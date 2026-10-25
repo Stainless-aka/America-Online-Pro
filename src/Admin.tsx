@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X, HandCoins, ClipboardList } from 'lucide-react'
+import { Activity, ArrowLeft, CheckCircle2, CircleAlert, LoaderCircle, LogOut, Plus, RefreshCw, Search, ShieldCheck, Trash2, Users, X, HandCoins, ClipboardList, MessageCircle, Send } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './admin.css'
 
@@ -28,7 +28,12 @@ export default function Admin() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [sessionEmail, setSessionEmail] = useState('')
   const [total, setTotal] = useState(0)
-  const [activeTab, setActiveTab] = useState<'users' | 'loans'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'loans' | 'support'>('users')
+  const [supportThreads, setSupportThreads] = useState<Array<{id:string;user_id:string;subject:string;status:'open'|'pending'|'closed';created_at:string;updated_at:string}>>([])
+  const [selectedThreadId, setSelectedThreadId] = useState('')
+  const [supportMessages, setSupportMessages] = useState<Array<{id:string;conversation_id:string;sender_id:string;body:string;created_at:string}>>([])
+  const [supportReply, setSupportReply] = useState('')
+  const [loadingSupport, setLoadingSupport] = useState(false)
   const [loans, setLoans] = useState<LoanApplication[]>([])
   const [loanDrafts, setLoanDrafts] = useState<Record<string, LoanApplication['status']>>({})
 
@@ -59,6 +64,56 @@ export default function Admin() {
       setIsAdmin(false)
     } finally { setBusy(false); setReady(true) }
   }, [callAdmin])
+
+  const loadSupport = useCallback(async () => {
+    if (!supabase) return
+    setBusy(true); setLoadingSupport(true)
+    try {
+      const { data, error } = await supabase.from('support_conversations').select('id,user_id,subject,status,created_at,updated_at').order('updated_at', { ascending: false }).limit(200)
+      if (error) throw error
+      const rows = (data || []) as typeof supportThreads
+      setSupportThreads(rows)
+      setSelectedThreadId(current => rows.some(row => row.id === current) ? current : rows[0]?.id || '')
+      setIsAdmin(true)
+    } catch (error) {
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not load support conversations.' })
+    } finally { setBusy(false); setLoadingSupport(false); setReady(true) }
+  }, [])
+
+  const loadSupportMessages = useCallback(async (threadId: string) => {
+    if (!supabase || !threadId) { setSupportMessages([]); return }
+    const { data, error } = await supabase.from('support_messages').select('id,conversation_id,sender_id,body,created_at').eq('conversation_id', threadId).order('created_at', { ascending: true }).limit(500)
+    if (error) setToast({ kind: 'error', text: error.message })
+    else setSupportMessages((data || []) as typeof supportMessages)
+  }, [])
+
+  useEffect(() => { if (activeTab === 'support' && selectedThreadId) { void loadSupportMessages(selectedThreadId); const timer = window.setInterval(() => void loadSupportMessages(selectedThreadId), 5000); return () => window.clearInterval(timer) } }, [activeTab, selectedThreadId, loadSupportMessages])
+
+  const replyToSupport = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const body = supportReply.trim()
+    if (!supabase || !selectedThreadId || !body) return
+    setBusy(true)
+    try {
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError || !userData.user) throw new Error('Please sign in again to reply.')
+      const { error } = await supabase.from('support_messages').insert({ conversation_id: selectedThreadId, sender_id: userData.user.id, body })
+      if (error) throw error
+      await supabase.from('support_conversations').update({ updated_at: new Date().toISOString(), status: 'pending' }).eq('id', selectedThreadId)
+      setSupportReply('')
+      await loadSupportMessages(selectedThreadId)
+      await loadSupport()
+      setToast({ kind: 'success', text: 'Reply sent to the customer.' })
+    } catch (error) { setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not send reply.' }) }
+    finally { setBusy(false) }
+  }
+
+  const updateSupportStatus = async (threadId: string, status: 'open' | 'pending' | 'closed') => {
+    if (!supabase) return
+    const { error } = await supabase.from('support_conversations').update({ status, updated_at: new Date().toISOString() }).eq('id', threadId)
+    if (error) setToast({ kind: 'error', text: error.message })
+    else { setSupportThreads(current => current.map(thread => thread.id === threadId ? { ...thread, status, updated_at: new Date().toISOString() } : thread)); setToast({ kind: 'success', text: 'Conversation status updated.' }) }
+  }
 
   const updateLoanStatus = async (loan: LoanApplication) => {
     const status = loanDrafts[loan.id] || loan.status
@@ -144,6 +199,7 @@ export default function Admin() {
       <div className="admin-side-label">ADMINISTRATION</div>
       <button className={'admin-side-item ' + (activeTab === 'users' ? 'active' : '')} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={17} /> User management</button>
       <button className={'admin-side-item ' + (activeTab === 'loans' ? 'active' : '')} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={17} /> Loan applications</button>
+      <button className={'admin-side-item ' + (activeTab === 'support' ? 'active' : '')} onClick={() => { setActiveTab('support'); void loadSupport() }}><MessageCircle size={17} /> Customer support</button>
       <div className="admin-side-item"><ShieldCheck size={17} /> Access controlled</div>
       <div className="admin-sidebar-foot"><span className="admin-avatar">{sessionEmail.slice(0,1).toUpperCase() || 'A'}</span><div><strong>{sessionEmail || 'Not signed in'}</strong><small>Administrator portal</small></div><button aria-label="Sign out" onClick={() => void signOut()}><LogOut size={16} /></button></div>
     </aside>
@@ -152,9 +208,10 @@ export default function Admin() {
       <nav className="admin-page-nav" aria-label="Admin pages">
         <button type="button" className={'admin-page-nav-item ' + (activeTab === 'users' ? 'active' : '')} aria-current={activeTab === 'users' ? 'page' : undefined} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={16} /> <span>User Management</span></button>
         <button type="button" className={'admin-page-nav-item ' + (activeTab === 'loans' ? 'active' : '')} aria-current={activeTab === 'loans' ? 'page' : undefined} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={16} /> <span>Loan Applications</span><span className="admin-page-nav-count">{loans.length}</span></button>
+        <button type="button" className={'admin-page-nav-item ' + (activeTab === 'support' ? 'active' : '')} aria-current={activeTab === 'support' ? 'page' : undefined} onClick={() => { setActiveTab('support'); void loadSupport() }}><MessageCircle size={16} /> <span>Customer Support</span><span className="admin-page-nav-count">{supportThreads.filter(thread => thread.status !== 'closed').length}</span></button>
       </nav>
       <div className="admin-content">
-        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : 'Loan applications'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : 'Review customer loan requests and manage their application status.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : void loadLoans()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
+        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : activeTab === 'loans' ? 'Loan applications' : 'Customer support'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : activeTab === 'loans' ? 'Review customer loan requests and manage their application status.' : 'Read and reply to customer messages from the floating support chat.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : activeTab === 'loans' ? void loadLoans() : void loadSupport()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
         {toast && <div className={`admin-toast ${toast.kind}`}>{toast.kind === 'success' ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}<span>{toast.text}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
         {!isAdmin ? <section className="admin-access-card"><span className="admin-access-icon"><ShieldCheck size={24} /></span><h2>Administrator access required</h2><p>This portal is protected by Supabase. Your account must have the <code>admin</code> role in <code>public.user_roles</code>. The page does not grant administrator privileges by itself.</p><p className="admin-current-user">Signed in as: <strong>{sessionEmail || 'No active session'}</strong></p><button className="admin-secondary" onClick={() => window.location.href = '/'}>Return to application</button></section> : <>
 {activeTab === 'users' ? <>
@@ -166,10 +223,16 @@ export default function Admin() {
             <div className="admin-table-foot"><span><ShieldCheck size={14} /> User management actions are server-validated.</span><span>Simulation environment only</span></div>
           </section>
 
-          </> : <section className="admin-users-card admin-loans-card">
+          </> : activeTab === 'loans' ? <section className="admin-users-card admin-loans-card">
             <div className="admin-table-heading"><div><h2>Customer loan applications</h2><p>Review requested amounts, income, purpose and update each application status.</p></div><span className="admin-role">{loans.length} application{loans.length === 1 ? '' : 's'}</span></div>
             <div className="admin-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>REQUESTED AMOUNT</th><th>TERM / RATE</th><th>PURPOSE</th><th>MONTHLY INCOME</th><th>SUBMITTED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{loans.map(loan => <tr key={loan.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(loan.customer_name || loan.customer_email).slice(0,1).toUpperCase()}</span><div><strong>{loan.customer_name}</strong><small>{loan.customer_email}</small><small>Ref: {loan.id.slice(0,8).toUpperCase()}</small></div></div></td><td><strong>{formatLoanMoney(Number(loan.amount))}</strong></td><td>{loan.term_months} months<br />{Number(loan.annual_rate)}% APR</td><td>{loan.purpose}<br /><small>{loan.employment_status}</small></td><td>{formatLoanMoney(Number(loan.monthly_income))}</td><td>{new Date(loan.created_at).toLocaleDateString()}</td><td><span className={'admin-role ' + (loan.status === 'approved' ? 'admin-role-admin' : '')}>{loanStatusLabel(loan.status)}</span></td><td><div className="admin-loan-action"><select aria-label={'Status for application ' + loan.id} value={loanDrafts[loan.id] || loan.status} disabled={busy} onChange={e => setLoanDrafts(current => ({ ...current, [loan.id]: e.target.value as LoanApplication['status'] }))}>{loanStatuses.map(status => <option key={status} value={status}>{loanStatusLabel(status)}</option>)}</select><button className="admin-primary" disabled={busy || (loanDrafts[loan.id] || loan.status) === loan.status} onClick={() => void updateLoanStatus(loan)}>Save</button></div></td></tr>)}</tbody></table>{!loans.length && <div className="admin-empty"><ClipboardList size={25} /><strong>No loan applications yet</strong><span>Customer submissions will appear here.</span></div>}</div>
             <div className="admin-table-foot"><span><ShieldCheck size={14} /> Changes are validated by the administrator backend.</span><span>Approval records a status only; it does not disburse funds.</span></div>
+          </section> : <section className="admin-support-layout">
+            <aside className="admin-support-inbox"><div className="admin-table-heading"><div><h2>Inbox</h2><p>{supportThreads.length} conversations</p></div></div>{loadingSupport ? <div className="admin-empty"><LoaderCircle size={22} className="admin-spin"/><span>Loading conversations…</span></div> : supportThreads.length ? supportThreads.map(thread => <button type="button" key={thread.id} className={'admin-support-thread ' + (selectedThreadId === thread.id ? 'selected' : '')} onClick={() => setSelectedThreadId(thread.id)}><span className="admin-support-thread-icon"><MessageCircle size={16}/></span><span className="admin-support-thread-copy"><strong>{thread.subject || 'Customer support'}</strong><small>{thread.user_id.slice(0,8)}… · {new Date(thread.updated_at).toLocaleString()}</small></span><span className={'admin-support-status status-' + thread.status}>{thread.status}</span></button>) : <div className="admin-empty"><MessageCircle size={25}/><strong>No support messages yet</strong><span>Customer conversations will appear here.</span></div>}</aside>
+            <section className="admin-support-conversation"><div className="admin-table-heading"><div><h2>Conversation</h2><p>{supportThreads.find(thread => thread.id === selectedThreadId)?.user_id || 'Select a customer conversation'}</p></div>{selectedThreadId && <select aria-label="Conversation status" value={supportThreads.find(thread => thread.id === selectedThreadId)?.status || 'open'} onChange={e => void updateSupportStatus(selectedThreadId, e.target.value as 'open'|'pending'|'closed')}><option value="open">Open</option><option value="pending">Pending</option><option value="closed">Closed</option></select>}</div>
+              <div className="admin-support-messages">{!selectedThreadId ? <div className="admin-empty"><MessageCircle size={25}/><span>Choose a conversation to read and reply.</span></div> : supportMessages.length ? supportMessages.map(message => <article key={message.id} className={'admin-support-message ' + (message.sender_id === supportThreads.find(thread => thread.id === selectedThreadId)?.user_id ? 'customer' : 'admin')}><p>{message.body}</p><small>{message.sender_id === supportThreads.find(thread => thread.id === selectedThreadId)?.user_id ? 'Customer' : 'Admin'} · {new Date(message.created_at).toLocaleString()}</small></article>) : <div className="admin-empty"><span>No messages in this conversation yet.</span></div>}</div>
+              <form className="admin-support-reply" onSubmit={replyToSupport}><textarea value={supportReply} onChange={e => setSupportReply(e.target.value)} rows={3} maxLength={4000} required placeholder="Write a reply to the customer…" disabled={!selectedThreadId || busy}/><button className="admin-primary" disabled={!selectedThreadId || !supportReply.trim() || busy}>{busy ? <LoaderCircle size={15} className="admin-spin"/> : <Send size={15}/>} Send reply</button></form>
+            </section>
           </section>}
         </>}
         <footer className="admin-footer">America Online Pro · Administrative tools · Simulation only</footer>
