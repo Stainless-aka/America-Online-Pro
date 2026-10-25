@@ -149,6 +149,10 @@ export default function Admin() {
     </aside>
     <main className="admin-main">
       <header className="admin-topbar"><a href="/" className="admin-back"><ArrowLeft size={16} /> Main application</a><div className="admin-secure"><ShieldCheck size={15} /> Restricted access</div></header>
+      <nav className="admin-page-nav" aria-label="Admin pages">
+        <button type="button" className={'admin-page-nav-item ' + (activeTab === 'users' ? 'active' : '')} aria-current={activeTab === 'users' ? 'page' : undefined} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={16} /> <span>User Management</span></button>
+        <button type="button" className={'admin-page-nav-item ' + (activeTab === 'loans' ? 'active' : '')} aria-current={activeTab === 'loans' ? 'page' : undefined} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={16} /> <span>Loan Applications</span><span className="admin-page-nav-count">{loans.length}</span></button>
+      </nav>
       <div className="admin-content">
         <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : 'Loan applications'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : 'Review customer loan requests and manage their application status.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : void loadLoans()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
         {toast && <div className={`admin-toast ${toast.kind}`}>{toast.kind === 'success' ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}<span>{toast.text}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
