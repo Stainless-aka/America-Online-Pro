@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   Activity, ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, ChevronDown,
-  CircleHelp, CreditCard, Eye, EyeOff, LayoutDashboard, LogOut, Menu, Plus, Search,
+  CircleHelp, CreditCard, Eye, EyeOff, LayoutDashboard, LogOut, Menu, Plus, Search, MessageCircle, Send,
   Settings2, ShieldCheck, Sparkles, Wallet, X, LockKeyhole, LoaderCircle, RefreshCw, HandCoins, TrendingUp,
 } from 'lucide-react'
 import type { Session } from '@supabase/supabase-js'
@@ -370,7 +370,63 @@ function App() {
       </div>
     </main>
     {menuOpen && <button className="mobile-overlay" aria-label="Close navigation overlay" onClick={() => setMenuOpen(false)} />}
+    {session?.user && <SupportChatWidget userId={session.user.id} />}
     {notice && <NoticeToast notice={notice} onClose={() => setNotice(null)} />}
+  </div>
+}
+
+
+type SupportMessage = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string }
+type SupportConversation = { id: string; user_id: string; subject: string; status: 'open' | 'pending' | 'closed'; created_at: string; updated_at: string }
+
+function SupportChatWidget({ userId }: { userId: string }) {
+  const [open, setOpen] = useState(false)
+  const [conversation, setConversation] = useState<SupportConversation | null>(null)
+  const [messages, setMessages] = useState<SupportMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [loadingChat, setLoadingChat] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [chatError, setChatError] = useState('')
+
+  const loadChat = useCallback(async (createIfMissing = false) => {
+    if (!supabase || !userId) return
+    setLoadingChat(true)
+    let { data: rows, error } = await supabase.from('support_conversations').select('id,user_id,subject,status,created_at,updated_at').eq('user_id', userId).neq('status', 'closed').order('updated_at', { ascending: false }).limit(1)
+    if (error) { setChatError(error.message); setLoadingChat(false); return }
+    let found = (rows || [])[0] as SupportConversation | undefined
+    if (!found && createIfMissing) {
+      const created = await supabase.from('support_conversations').insert({ user_id: userId, subject: 'Customer support' }).select('id,user_id,subject,status,created_at,updated_at').single()
+      if (created.error) { setChatError(created.error.message); setLoadingChat(false); return }
+      found = created.data as SupportConversation
+    }
+    setConversation(found || null)
+    if (found) {
+      const result = await supabase.from('support_messages').select('id,conversation_id,sender_id,body,created_at').eq('conversation_id', found.id).order('created_at', { ascending: true }).limit(200)
+      if (result.error) setChatError(result.error.message)
+      else { setMessages((result.data || []) as SupportMessage[]); setChatError('') }
+    } else setMessages([])
+    setLoadingChat(false)
+  }, [userId])
+
+  useEffect(() => { if (open) { void loadChat(true); const timer = window.setInterval(() => void loadChat(false), 5000); return () => window.clearInterval(timer) } }, [open, loadChat])
+
+  const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const body = draft.trim()
+    if (!supabase || !conversation || !body || sending) return
+    setSending(true); setChatError('')
+    const { error } = await supabase.from('support_messages').insert({ conversation_id: conversation.id, sender_id: userId, body })
+    if (error) setChatError(error.message)
+    else { setDraft(''); await supabase.from('support_conversations').update({ updated_at: new Date().toISOString(), status: 'open' }).eq('id', conversation.id); await loadChat(false) }
+    setSending(false)
+  }
+
+  return <div className="support-chat-widget">
+    {open && <section className="support-chat-panel" aria-label="Customer support chat"><header className="support-chat-header"><span className="support-chat-mark"><MessageCircle size={19}/></span><div><strong>Customer support</strong><small><i/> Usually replies here</small></div><button type="button" aria-label="Close support chat" onClick={() => setOpen(false)}><X size={18}/></button></header>
+      <div className="support-chat-messages">{loadingChat && !messages.length ? <p className="support-chat-empty">Connecting to support…</p> : !messages.length ? <p className="support-chat-empty">Hi! Send us a message and our team will reply here.</p> : messages.map(message => <div key={message.id} className={'support-chat-bubble ' + (message.sender_id === userId ? 'mine' : 'theirs')}><p>{message.body}</p><small>{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small></div>)}{chatError && <p className="support-chat-error">{chatError}</p>}</div>
+      <form className="support-chat-compose" onSubmit={sendMessage}><textarea value={draft} onChange={e => setDraft(e.target.value)} maxLength={4000} rows={2} placeholder="Write your message…" aria-label="Message to support" required/><button type="submit" disabled={sending || !draft.trim() || !conversation} aria-label="Send message">{sending ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>}</button></form>
+    </section>}
+    <button className="support-chat-launcher" type="button" onClick={() => setOpen(value => !value)} aria-label={open ? 'Close support chat' : 'Contact customer support'}><span>{open ? <X size={22}/> : <MessageCircle size={22}/>}</span>{!open && <span className="support-chat-launcher-label">Need help?</span>}</button>
   </div>
 }
 
