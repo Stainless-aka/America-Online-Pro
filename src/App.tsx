@@ -428,15 +428,16 @@ function SupportChatWidget({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!open || !supabase) return
+    const client = supabase
     void loadChat(true)
-    const channel = supabase.channel('customer-support-chat-' + userId)
+    const channel = client.channel('customer-support-chat-' + userId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, payload => {
         const changed = payload.new as Partial<SupportMessage>
         if (!changed.conversation_id || changed.conversation_id === conversation?.id) void loadChat(false)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations', filter: 'user_id=eq.' + userId }, () => { void loadChat(false) })
       .subscribe()
-    return () => { void supabase.removeChannel(channel) }
+    return () => { void client.removeChannel(channel) }
   }, [open, loadChat, userId, conversation?.id])
 
   const startNewChat = async () => {
