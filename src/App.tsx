@@ -11,6 +11,7 @@ import { supabase } from './lib/supabase'
 type Page = 'Overview' | 'Accounts' | 'Transfer' | 'Cards' | 'Transactions' | 'Loans' | 'Invest' | 'Settings' | 'Analytics' | 'Notifications' | 'Help center'
 type Account = { id: string; account_number: string; routing_number: string | null; iban: string | null; swift_bic: string | null; display_name: string; currency: string; status: string; is_demo: boolean }
 type Entry = { id: string; amount_minor: number; currency: string; created_at: string; account_id: string; ledger_transactions: { description: string; status: string; posted_at: string | null } | null }
+type PendingTransfer = { id: string; recipient_account_number: string | null; amount_minor: number; currency: string; description: string; created_at: string; status: string }
 type Notice = { kind: 'success' | 'error' | 'info'; text: string }
 
 function displayTransactionDescription(value: string | null | undefined) {
@@ -145,6 +146,7 @@ function App() {
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [entries, setEntries] = useState<Entry[]>([])
+  const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([])
   const [profileName, setProfileName] = useState('')
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -194,20 +196,23 @@ function App() {
   const loadData = useCallback(async () => {
     if (!supabase || !session?.user) return
     setLoading(true)
-    const [profileResult, accountResult, entryResult] = await Promise.all([
+    const [profileResult, accountResult, entryResult, pendingTransferResult] = await Promise.all([
       supabase.from('profiles').select('full_name').eq('id', session.user.id).maybeSingle(),
       supabase.from('accounts').select('id,account_number,routing_number,iban,swift_bic,display_name,currency,status,is_demo').order('created_at', { ascending: true }),
       supabase.from('ledger_entries').select('id,amount_minor,currency,created_at,account_id,ledger_transactions(description,status,posted_at)').order('created_at', { ascending: false }).limit(100),
+      supabase.from('transfers').select('id,recipient_account_number,amount_minor,currency,description,created_at,status').eq('actor_id', session.user.id).eq('status', 'pending').order('created_at', { ascending: false }),
     ])
     const { data: transferNotice } = await supabase.from('transfer_notice_settings').select('code_type,enabled').eq('id', true).maybeSingle()
     if (transferNotice) { setTransferNoticeType(transferNotice.code_type); setTransferNoticeEnabled(transferNotice.enabled) }
     if (profileResult.error) announce('error', profileResult.error.message)
     if (accountResult.error) announce('error', accountResult.error.message)
     if (entryResult.error) announce('error', entryResult.error.message)
+    if (pendingTransferResult.error) announce('error', pendingTransferResult.error.message)
     setProfileName(profileResult.data?.full_name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Customer')
     setProfileDraft(profileResult.data?.full_name || session.user.user_metadata?.full_name || '')
     setAccounts(accountResult.data || [])
     setEntries((entryResult.data || []) as unknown as Entry[])
+    setPendingTransfers((pendingTransferResult.data || []) as PendingTransfer[])
     setLoading(false)
   }, [session])
 
@@ -368,7 +373,7 @@ function App() {
         {page === 'Transfer' && <PageHeader kicker="MOVE MONEY" title="Transfer" subtitle="Record a simulated transfer to an America Online Pro account or an external account number."><div className="form-layout"><form className="content-card app-form" onSubmit={sendTransfer}><label>From account<select required value={activeAccount?.id || ''} disabled={!activeAccount} onChange={() => {}}>{activeAccount ? <option value={activeAccount.id}>{activeAccount.display_name} · {activeAccount.account_number} · {money(activeAccount.balance)}</option> : <option value="">No account available</option>}</select></label><h3 className="form-section-title">Recipient details</h3><label>Full Legal Name<input required autoComplete="name" value={recipientLegalName} onChange={e => setRecipientLegalName(e.target.value)} maxLength={120} placeholder="Recipient's full legal name" /></label><label>Full Address<input required autoComplete="street-address" value={recipientAddress} onChange={e => setRecipientAddress(e.target.value)} maxLength={240} placeholder="Street, city, state/province, postal code, country" /></label><label>Bank Name<input required value={recipientBankName} onChange={e => setRecipientBankName(e.target.value)} maxLength={120} placeholder="Recipient's bank name" /></label><label>Account Number<input required autoComplete="off" value={transferAccount} onChange={e => setTransferAccount(e.target.value)} maxLength={64} placeholder="Any recipient account number" /></label><label>SWIFT/BIC Code (optional)<input value={recipientSwiftBic} onChange={e => setRecipientSwiftBic(e.target.value.toUpperCase())} maxLength={20} placeholder="e.g. ABCDUS33" /></label><label>Routing Number / ABA (optional)<input inputMode="numeric" value={recipientRoutingNumber} onChange={e => setRecipientRoutingNumber(e.target.value)} maxLength={20} placeholder="Bank routing number" /></label><label>IBAN (optional)<input autoComplete="off" value={recipientIban} onChange={e => setRecipientIban(e.target.value.toUpperCase().replace(/\\s/g, ''))} maxLength={34} placeholder="International bank account number" /></label><label>Bank Address<input required value={recipientBankAddress} onChange={e => setRecipientBankAddress(e.target.value)} maxLength={240} placeholder="Bank branch address" /></label><label>Phone Number<input required type="tel" autoComplete="tel" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} maxLength={32} placeholder="Recipient's contact number" /></label><label>Reason for transfer (optional)<input value={transferNote} onChange={e => setTransferNote(e.target.value)} maxLength={120} placeholder="Purpose of this transfer" /></label><label>Amount (USD)<div className="currency-input"><span>$</span><input type="number" min="1" step="0.01" required value={transferAmount} onChange={e => setTransferAmount(e.target.value)} placeholder="0.00" /></div></label><button className="primary-button" disabled={saving || !activeAccount}>{saving ? <LoaderCircle className="spin" size={16} /> : <ArrowUpRight size={16} />} Review and send transfer</button></form><aside className="content-card side-note"><div className="note-icon"><LockKeyhole size={19} /></div><h3>Transfer security</h3><p>Transfers to an existing America Online Pro account update both simulated balances. Other account numbers are recorded as simulated outgoing transfers only; no external bank network is connected and no real payment is sent.</p><div className="note-divider" /><p><strong>Available balance</strong><br />{activeAccount ? money(activeAccount.balance) : 'No account'}</p></aside></div></PageHeader>}
 
 
-        {page === 'Transactions' && <PageHeader kicker="ACCOUNT ACTIVITY" title="Transactions" subtitle="Search and review posted ledger activity." action={<button className="secondary-button" onClick={() => void loadData()}><RefreshCw size={14} /> Refresh</button>}><div className="content-card transaction-page"><label className="table-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter by transaction description…" /></label><TransactionTable entries={filteredEntries} onSelect={() => {}} /><p className="table-footnote">Showing {filteredEntries.length} ledger entr{filteredEntries.length === 1 ? 'y' : 'ies'}. Your account activity and transaction history.</p></div></PageHeader>}
+        {page === 'Transactions' && <PageHeader kicker="ACCOUNT ACTIVITY" title="Transactions" subtitle="Review pending transfer requests and posted account activity." action={<button className="secondary-button" onClick={() => void loadData()}><RefreshCw size={14} /> Refresh</button>}>{pendingTransfers.length > 0 && <section className="content-card transaction-page pending-transfers-card"><div className="section-heading"><div><span className="section-kicker">AWAITING REVIEW</span><h2>Transfers pending approval</h2><p>These requests are waiting for an administrator to review them.</p></div><span className="pill">{pendingTransfers.length} pending</span></div><div className="activity-table"><div className="activity-table-head"><span>TRANSFER</span><span>SUBMITTED</span><span>AMOUNT</span><span>STATUS</span></div>{pendingTransfers.map(transfer => <div className="activity-row" key={transfer.id}><div className="transaction-name"><span className="transaction-avatar debit"><ArrowUpRight size={16}/></span><div><strong>{transfer.description || 'Account transfer'}</strong><small>To account: {transfer.recipient_account_number || '—'}</small></div></div><span className="transaction-category">{dateLabel(transfer.created_at)}</span><strong className="transaction-amount debit">{money(Number(transfer.amount_minor), transfer.currency)}</strong><span className="transaction-status"><i/> Pending approval</span></div>)}</div></section>}<div className="content-card transaction-page"><label className="table-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter by transaction description…" /></label><TransactionTable entries={filteredEntries} onSelect={() => {}} /><p className="table-footnote">Showing {filteredEntries.length} posted ledger entr{filteredEntries.length === 1 ? 'y' : 'ies'}. Pending transfers appear above until reviewed by an administrator.</p></div></PageHeader>}
 
         {page === 'Loans' && <LoansPage userId={session?.user.id || ''} />}
 
