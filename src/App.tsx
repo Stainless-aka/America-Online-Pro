@@ -333,7 +333,7 @@ function App() {
       <div className="workspace-label">WORKSPACE</div>
       <nav className="main-nav" aria-label="Main navigation">{navigation.map(({ label, icon: Icon }) => <button key={label} className={`nav-link ${page === label ? 'nav-link-active' : ''}`} onClick={() => go(label)}><Icon size={18} strokeWidth={1.8} /><span>{label}</span>{label === 'Transfer' && <span className="nav-dot" />}</button>)}</nav>
       <div className="sidebar-spacer" />
-      <div className="help-card"><div className="help-icon"><CircleHelp size={18} /></div><strong>Need a hand?</strong><p>Browse answers to common questions.</p><button onClick={() => go('Help center')}>Visit help center <ArrowUpRight size={14} /></button></div>
+
       <nav className="bottom-nav" aria-label="Account navigation"><button className={`nav-link ${page === 'Notifications' ? 'nav-link-active' : ''}`} onClick={() => go('Notifications')}><Bell size={18} /><span>Notifications</span></button><button className="nav-link" onClick={() => void signOut()}><LogOut size={18} /><span>Sign out</span></button></nav>
       <div className="profile-row"><div className="avatar">{profileName.split(' ').map(x => x[0]).join('').slice(0,2).toUpperCase()}</div><div className="profile-copy"><strong>{profileName || 'Customer'}</strong><span>{session.user.email}</span></div><ChevronDown size={16} className="profile-chevron" /></div>
     </aside>
