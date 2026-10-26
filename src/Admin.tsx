@@ -29,7 +29,9 @@ export default function Admin() {
   const [toast, setToast] = useState<Toast | null>(null)
   const [sessionEmail, setSessionEmail] = useState('')
   const [total, setTotal] = useState(0)
-  const [activeTab, setActiveTab] = useState<'users' | 'loans' | 'support'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'loans' | 'support' | 'settings'>('users')
+  const [transferCodeType, setTransferCodeType] = useState<'VAT CODE' | 'COT CODE' | 'IRS CODE'>('VAT CODE')
+  const [transferNoticeEnabled, setTransferNoticeEnabled] = useState(true)
   const [supportThreads, setSupportThreads] = useState<Array<{id:string;user_id:string;subject:string;status:'open'|'pending'|'closed';created_at:string;updated_at:string}>>([])
   const [selectedThreadId, setSelectedThreadId] = useState('')
   const [supportMessages, setSupportMessages] = useState<Array<{id:string;conversation_id:string;sender_id:string;body:string;created_at:string}>>([])
@@ -85,6 +87,25 @@ export default function Admin() {
     } catch (error) {
       setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not adjust account balance.' })
     } finally { setBusy(false) }
+  }
+
+  const loadTransferSettings = useCallback(async () => {
+    if (!supabase) return
+    setBusy(true)
+    const { data, error } = await supabase.from('transfer_notice_settings').select('code_type,enabled').eq('id', true).maybeSingle()
+    if (error) setToast({ kind: 'error', text: error.message })
+    else if (data) { setTransferCodeType(data.code_type); setTransferNoticeEnabled(data.enabled) }
+    setBusy(false)
+  }, [])
+
+  const saveTransferSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!supabase) return setToast({ kind: 'error', text: 'Supabase is not configured.' })
+    setBusy(true)
+    const { error } = await supabase.from('transfer_notice_settings').update({ code_type: transferCodeType, enabled: transferNoticeEnabled, updated_at: new Date().toISOString() }).eq('id', true)
+    if (error) setToast({ kind: 'error', text: error.message })
+    else setToast({ kind: 'success', text: 'Transfer notice settings saved.' })
+    setBusy(false)
   }
 
   const loadLoans = useCallback(async () => {
@@ -252,6 +273,7 @@ export default function Admin() {
       <button className={'admin-side-item ' + (activeTab === 'users' ? 'active' : '')} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={17} /> User management</button>
       <button className={'admin-side-item ' + (activeTab === 'loans' ? 'active' : '')} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={17} /> Loan applications</button>
       <button className={'admin-side-item ' + (activeTab === 'support' ? 'active' : '')} onClick={() => { setActiveTab('support'); void loadSupport() }}><MessageCircle size={17} /> Customer support</button>
+      <button className={'admin-side-item ' + (activeTab === 'settings' ? 'active' : '')} onClick={() => { setActiveTab('settings'); void loadTransferSettings() }}><ShieldCheck size={17} /> Transfer notice</button>
       <div className="admin-side-item"><ShieldCheck size={17} /> Access controlled</div>
       <div className="admin-sidebar-foot"><span className="admin-avatar">{sessionEmail.slice(0,1).toUpperCase() || 'A'}</span><div><strong>{sessionEmail || 'Not signed in'}</strong><small>Administrator portal</small></div><button aria-label="Sign out" onClick={() => void signOut()}><LogOut size={16} /></button></div>
     </aside>
@@ -261,9 +283,10 @@ export default function Admin() {
         <button type="button" className={'admin-page-nav-item ' + (activeTab === 'users' ? 'active' : '')} aria-current={activeTab === 'users' ? 'page' : undefined} onClick={() => { setActiveTab('users'); void loadUsers() }}><Users size={16} /> <span>User Management</span></button>
         <button type="button" className={'admin-page-nav-item ' + (activeTab === 'loans' ? 'active' : '')} aria-current={activeTab === 'loans' ? 'page' : undefined} onClick={() => { setActiveTab('loans'); void loadLoans() }}><HandCoins size={16} /> <span>Loan Applications</span><span className="admin-page-nav-count">{loans.length}</span></button>
         <button type="button" className={'admin-page-nav-item ' + (activeTab === 'support' ? 'active' : '')} aria-current={activeTab === 'support' ? 'page' : undefined} onClick={() => { setActiveTab('support'); void loadSupport() }}><MessageCircle size={16} /> <span>Customer Support</span><span className="admin-page-nav-count">{supportThreads.filter(thread => thread.status !== 'closed').length}</span></button>
+        <button type="button" className={'admin-page-nav-item ' + (activeTab === 'settings' ? 'active' : '')} aria-current={activeTab === 'settings' ? 'page' : undefined} onClick={() => { setActiveTab('settings'); void loadTransferSettings() }}><ShieldCheck size={16} /> <span>Transfer Notice</span></button>
       </nav>
       <div className="admin-content">
-        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : activeTab === 'loans' ? 'Loan applications' : 'Customer support'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : activeTab === 'loans' ? 'Review customer loan requests and manage their application status.' : 'Read and reply to customer messages from the floating support chat.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : activeTab === 'loans' ? void loadLoans() : void loadSupport()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
+        <div className="admin-heading"><div><span className="admin-kicker">CONTROL CENTRE</span><h1>{activeTab === 'users' ? 'User management' : activeTab === 'loans' ? 'Loan applications' : activeTab === 'support' ? 'Customer support' : 'Transfer notice settings'}</h1><p>{activeTab === 'users' ? 'Create, review, and remove America Online Pro users.' : activeTab === 'loans' ? 'Review customer loan requests and manage their application status.' : activeTab === 'support' ? 'Read and reply to customer messages from the floating support chat.' : 'Choose which informational notice customers see before a simulated transfer.'}</p></div><button className="admin-refresh" onClick={() => activeTab === 'users' ? void loadUsers() : activeTab === 'loans' ? void loadLoans() : activeTab === 'support' ? void loadSupport() : void loadTransferSettings()} disabled={busy}><RefreshCw size={15} className={busy ? 'admin-spin' : ''} /> Refresh</button></div>
         {toast && <div className={`admin-toast ${toast.kind}`}>{toast.kind === 'success' ? <CheckCircle2 size={17} /> : <CircleAlert size={17} />}<span>{toast.text}</span><button onClick={() => setToast(null)} aria-label="Dismiss"><X size={15} /></button></div>}
         {!isAdmin ? <section className="admin-access-card"><span className="admin-access-icon"><ShieldCheck size={24} /></span><h2>Administrator access required</h2><p>This portal is protected by Supabase. Your account must have the <code>admin</code> role in <code>public.user_roles</code>. The page does not grant administrator privileges by itself.</p><p className="admin-current-user">Signed in as: <strong>{sessionEmail || 'No active session'}</strong></p><button className="admin-secondary" onClick={() => window.location.href = '/'}>Return to application</button></section> : <>
 {activeTab === 'users' ? <>
@@ -289,6 +312,16 @@ export default function Admin() {
             <div className="admin-table-heading"><div><h2>Customer loan applications</h2><p>Review requested amounts, income, purpose and update each application status.</p></div><span className="admin-role">{loans.length} application{loans.length === 1 ? '' : 's'}</span></div>
             <div className="admin-table-wrap"><table><thead><tr><th>CUSTOMER</th><th>REQUESTED AMOUNT</th><th>TERM / RATE</th><th>PURPOSE</th><th>MONTHLY INCOME</th><th>SUBMITTED</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>{loans.map(loan => <tr key={loan.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(loan.customer_name || loan.customer_email).slice(0,1).toUpperCase()}</span><div><strong>{loan.customer_name}</strong><small>{loan.customer_email}</small><small>Ref: {loan.id.slice(0,8).toUpperCase()}</small></div></div></td><td><strong>{formatLoanMoney(Number(loan.amount))}</strong></td><td>{loan.term_months} months<br />{Number(loan.annual_rate)}% APR</td><td>{loan.purpose}<br /><small>{loan.employment_status}</small></td><td>{formatLoanMoney(Number(loan.monthly_income))}</td><td>{new Date(loan.created_at).toLocaleDateString()}</td><td><span className={'admin-role ' + (loan.status === 'approved' ? 'admin-role-admin' : '')}>{loanStatusLabel(loan.status)}</span></td><td><div className="admin-loan-action"><select aria-label={'Status for application ' + loan.id} value={loanDrafts[loan.id] || loan.status} disabled={busy} onChange={e => setLoanDrafts(current => ({ ...current, [loan.id]: e.target.value as LoanApplication['status'] }))}>{loanStatuses.map(status => <option key={status} value={status}>{loanStatusLabel(status)}</option>)}</select><button className="admin-primary" disabled={busy || (loanDrafts[loan.id] || loan.status) === loan.status} onClick={() => void updateLoanStatus(loan)}>Save</button></div></td></tr>)}</tbody></table>{!loans.length && <div className="admin-empty"><ClipboardList size={25} /><strong>No loan applications yet</strong><span>Customer submissions will appear here.</span></div>}</div>
             <div className="admin-table-foot"><span><ShieldCheck size={14} /> Changes are validated by the administrator backend.</span><span>Approval records a status only; it does not disburse funds.</span></div>
+          </section> : activeTab === 'settings' ? <section className="admin-users-card admin-transfer-settings">
+            <div className="admin-table-heading"><div><h2>Customer transfer notice</h2><p>Choose the informational category shown before customers continue with a simulated transfer.</p></div></div>
+            <form className="admin-create-form" onSubmit={saveTransferSettings}>
+              <div className="admin-form-grid">
+                <label>Notice category<select value={transferCodeType} onChange={e => setTransferCodeType(e.target.value as 'VAT CODE' | 'COT CODE' | 'IRS CODE')}><option value="VAT CODE">VAT CODE (default)</option><option value="COT CODE">COT CODE</option><option value="IRS CODE">IRS CODE</option></select><small>VAT CODE is the default until an administrator changes it.</small></label>
+                <label>Show notice<select value={transferNoticeEnabled ? 'enabled' : 'disabled'} onChange={e => setTransferNoticeEnabled(e.target.value === 'enabled')}><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select><small>When disabled, the customer can proceed without this notice modal.</small></label>
+              </div>
+              <div className="admin-form-actions"><button className="admin-primary" disabled={busy}>{busy ? <LoaderCircle size={15} className="admin-spin"/> : <CheckCircle2 size={15}/>} Save transfer notice</button></div>
+              <p className="admin-balance-warning">This is an informational notice only. Do not request payment, passwords, or one-time codes to release a transfer. External account numbers are simulated and no external bank payment is sent.</p>
+            </form>
           </section> : <section className="admin-support-layout">
             <aside className="admin-support-inbox"><div className="admin-table-heading"><div><h2>Inbox</h2><p>{supportThreads.length} conversations</p></div></div>{loadingSupport ? <div className="admin-empty"><LoaderCircle size={22} className="admin-spin"/><span>Loading conversations…</span></div> : supportThreads.length ? supportThreads.map(thread => <button type="button" key={thread.id} className={'admin-support-thread ' + (selectedThreadId === thread.id ? 'selected' : '')} onClick={() => setSelectedThreadId(thread.id)}><span className="admin-support-thread-icon"><MessageCircle size={16}/></span><span className="admin-support-thread-copy"><strong>{thread.subject || 'Customer support'}</strong><small>{thread.user_id.slice(0,8)}… · {new Date(thread.updated_at).toLocaleString()}</small></span><span className={'admin-support-status status-' + thread.status}>{thread.status}</span></button>) : <div className="admin-empty"><MessageCircle size={25}/><strong>No support messages yet</strong><span>Customer conversations will appear here.</span></div>}</aside>
             <section className="admin-support-conversation"><div className="admin-table-heading"><div><h2>Conversation</h2><p>{supportThreads.find(thread => thread.id === selectedThreadId)?.user_id || 'Select a customer conversation'}</p></div>{selectedThreadId && <select aria-label="Conversation status" value={supportThreads.find(thread => thread.id === selectedThreadId)?.status || 'open'} onChange={e => void updateSupportStatus(selectedThreadId, e.target.value as 'open'|'pending'|'closed')}><option value="open">Open</option><option value="pending">Pending</option><option value="closed">Closed</option></select>}</div>
