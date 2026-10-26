@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
   if (roleError) return reply(500, { error: "Unable to verify administrator permissions." });
   if (!roleRows?.length) return reply(403, { error: "Administrator access required. Assign the admin role to your account first." });
 
-  let body: { action?: string; email?: string; password?: string; fullName?: string; userId?: string };
+  let body: { action?: string; email?: string; password?: string; fullName?: string; userId?: string; amount?: string; operation?: string; reason?: string };
   try { body = await req.json(); } catch { return reply(400, { error: "Request body must be valid JSON." }); }
 
   if (body.action === "list") {
@@ -45,17 +45,26 @@ Deno.serve(async (req: Request) => {
       const [{ data: roles, error: rolesError }, { data: profile, error: profileError }, { data: account, error: accountError }] = await Promise.all([
         adminClient.from("user_roles").select("role").eq("user_id", u.id),
         adminClient.from("profiles").select("full_name").eq("id", u.id).maybeSingle(),
-        adminClient.from("accounts").select("account_number").eq("owner_id", u.id).limit(1).maybeSingle(),
+        adminClient.from("accounts").select("id,account_number,currency").eq("owner_id", u.id).eq("is_demo", true).limit(1).maybeSingle(),
       ]);
       // A missing related record should not crash the entire user list.
       if (rolesError) console.error("admin-users: roles lookup failed", rolesError.message);
       if (profileError) console.error("admin-users: profile lookup failed", profileError.message);
       if (accountError) console.error("admin-users: account lookup failed", accountError.message);
+      let balance_minor = 0;
+      if (account?.id) {
+        const { data: entries, error: entriesError } = await adminClient.from("ledger_entries")
+          .select("amount_minor").eq("account_id", account.id);
+        if (entriesError) console.error("admin-users: balance lookup failed", entriesError.message);
+        else balance_minor = (entries || []).reduce((sum, entry) => sum + Number(entry.amount_minor), 0);
+      }
       return {
         id: u.id, email: u.email || "", created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at || null, email_confirmed_at: u.email_confirmed_at || null,
         full_name: profile?.full_name || String(u.user_metadata?.full_name || ""),
-        roles: (roles || []).map((r) => r.role), account_number: account?.account_number || null,
+        roles: (roles || []).map((r) => r.role),
+        account_id: account?.id || null, account_number: account?.account_number || null,
+        currency: account?.currency || "USD", balance_minor,
       };
     }));
     return reply(200, { users, total: data.total ?? users.length });
@@ -137,6 +146,35 @@ Deno.serve(async (req: Request) => {
     const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
     if (deleteUserError) return reply(400, { error: deleteUserError.message });
     return reply(200, { message: "User and associated demo records deleted." });
+  }
+
+  if (body.action === "balance_adjust") {
+    const userId = body.userId?.trim();
+    const operation = body.operation?.trim();
+    const reason = body.reason?.trim() || "";
+    const amount = Number(body.amount);
+    if (!userId) return reply(400, { error: "Select a customer." });
+    if (!["add", "deduct"].includes(operation || "")) return reply(400, { error: "Choose add or deduct." });
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1000000000) return reply(400, { error: "Enter a valid amount greater than zero." });
+    if (reason.length < 3 || reason.length > 240) return reply(400, { error: "Reason must be between 3 and 240 characters." });
+    const { data: target, error: targetError } = await adminClient.auth.admin.getUserById(userId);
+    if (targetError || !target.user) return reply(404, { error: "Customer not found." });
+    const { data: account, error: accountError } = await adminClient.from("accounts")
+      .select("id,account_number,currency").eq("owner_id", userId).eq("is_demo", true).eq("status", "active")
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (accountError) return reply(400, { error: accountError.message });
+    if (!account) return reply(404, { error: "Customer has no active account to adjust." });
+    const amountMinor = Math.round(amount * 100);
+    if (amountMinor <= 0) return reply(400, { error: "Amount must be at least $0.01." });
+    const { data: transactionId, error: adjustError } = await adminClient.rpc("admin_adjust_account_balance", {
+      p_actor_id: actor.id,
+      p_account_id: account.id,
+      p_amount_minor: amountMinor,
+      p_operation: operation,
+      p_reason: reason,
+    });
+    if (adjustError) return reply(400, { error: adjustError.message });
+    return reply(200, { transaction_id: transactionId, account_id: account.id, account_number: account.account_number, currency: account.currency, message: "Account balance updated and ledger entry recorded." });
   }
 
   if (body.action === "loans_list") {
