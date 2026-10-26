@@ -20,3 +20,6 @@
 .admin-support-reply{display:flex;align-items:flex-end;gap:10px;padding:13px;border-top:1px solid #edf0eb}.admin-support-reply textarea{flex:1;min-width:0;resize:vertical;border:1px solid #dce5d9;border-radius:9px;padding:11px;font:inherit;font-size:11px}.admin-support-reply .admin-primary{white-space:nowrap}
 @media(max-width:850px){.admin-support-layout{grid-template-columns:1fr}.admin-support-messages{height:320px}}
 @media(max-width:520px){.admin-support-reply{align-items:stretch;flex-direction:column}.admin-support-reply .admin-primary{align-self:flex-end}}
+
+.admin-user-actions{display:flex;align-items:center;gap:7px;min-width:150px}.admin-user-actions .admin-secondary{padding:8px 9px;font-size:10px}.admin-balance-form{border-top:1px solid #e9eee6}.admin-form-grid select{width:100%;min-width:0;border:1px solid #e0e7de;border-radius:8px;padding:11px 12px;background:#fff;color:#28352a;font:400 11px 'DM Sans',sans-serif}.admin-balance-reason{grid-column:1/-1}.admin-balance-warning{margin:13px 0 0;color:#7f8b80;font-size:10px;line-height:1.6}
+@media(max-width:700px){.admin-balance-reason{grid-column:auto}.admin-user-actions{min-width:150px}}
