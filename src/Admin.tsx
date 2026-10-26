@@ -6,7 +6,8 @@ import './admin.css'
 
 type ManagedUser = {
   id: string; email: string; created_at: string; last_sign_in_at: string | null;
-  email_confirmed_at: string | null; full_name: string; roles: string[]; account_number: string | null
+  email_confirmed_at: string | null; full_name: string; roles: string[]; account_number: string | null;
+  account_id: string | null; currency: string; balance_minor: number
 }
 type Toast = { kind: 'success' | 'error'; text: string }
 type LoanApplication = { id: string; user_id: string; customer_email: string; customer_name: string; amount: number; term_months: number; annual_rate: number; purpose: string; employment_status: string; monthly_income: number; status: 'submitted' | 'under_review' | 'approved' | 'declined' | 'closed'; created_at: string; updated_at: string }
@@ -36,6 +37,10 @@ export default function Admin() {
   const [loadingSupport, setLoadingSupport] = useState(false)
   const [loans, setLoans] = useState<LoanApplication[]>([])
   const [loanDrafts, setLoanDrafts] = useState<Record<string, LoanApplication['status']>>({})
+  const [adjustUser, setAdjustUser] = useState<ManagedUser | null>(null)
+  const [adjustOperation, setAdjustOperation] = useState<'add' | 'deduct'>('add')
+  const [adjustAmount, setAdjustAmount] = useState('')
+  const [adjustReason, setAdjustReason] = useState('')
 
   const callAdmin = useCallback(async (payload: Record<string, string>) => {
     if (!supabase) throw new Error('Supabase is not configured.')
@@ -50,6 +55,37 @@ export default function Admin() {
     if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`)
     return data
   }, [])
+
+  const adjustBalance = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!adjustUser) return
+    const amount = Number(adjustAmount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setToast({ kind: 'error', text: 'Enter an amount greater than zero.' })
+      return
+    }
+    if (adjustReason.trim().length < 3) {
+      setToast({ kind: 'error', text: 'Enter a reason of at least 3 characters.' })
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await callAdmin({
+        action: 'balance_adjust',
+        userId: adjustUser.id,
+        operation: adjustOperation,
+        amount: String(amount),
+        reason: adjustReason.trim(),
+      })
+      setToast({ kind: 'success', text: `${adjustOperation === 'add' ? 'Added funds to' : 'Deducted funds from'} ${adjustUser.email}. ${result.message || ''}` })
+      setAdjustUser(null)
+      setAdjustAmount('')
+      setAdjustReason('')
+      await loadUsers()
+    } catch (error) {
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Could not adjust account balance.' })
+    } finally { setBusy(false) }
+  }
 
   const loadLoans = useCallback(async () => {
     setBusy(true)
@@ -235,7 +271,17 @@ export default function Admin() {
           <section className="admin-users-card"><div className="admin-table-heading"><div><h2>All users</h2><p>Review accounts and access details.</p></div><button className="admin-primary" onClick={() => setShowCreate(!showCreate)}><Plus size={16} /> Create user</button></div>
             {showCreate && <form className="admin-create-form" onSubmit={createUser}><div className="admin-form-title"><div><strong>Create a user</strong><p>Creates a confirmed login and a new account with a zero balance.</p></div><button type="button" aria-label="Close form" onClick={() => setShowCreate(false)}><X size={16} /></button></div><div className="admin-form-grid"><label>Full name<input required minLength={2} maxLength={100} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Customer name" /></label><label>Email address<input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="customer@example.com" /></label><label className="admin-password-field">Temporary password<input required type="password" minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" /><small>Share securely and ask the user to change it after signing in.</small></label></div><div className="admin-form-actions"><button type="button" className="admin-secondary" onClick={() => setShowCreate(false)}>Cancel</button><button className="admin-primary" disabled={busy}>{busy ? <LoaderCircle size={15} className="admin-spin" /> : <Plus size={15} />} Create account</button></div></form>}
             <div className="admin-table-tools"><label><Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, email, account number, role…" /></label><span>{filteredUsers.length} result{filteredUsers.length === 1 ? '' : 's'}</span></div>
-            <div className="admin-table-wrap"><table><thead><tr><th>USER</th><th>ACCOUNT NUMBER</th><th>ROLE</th><th>CREATED</th><th>LAST SIGN IN</th><th>ACTION</th></tr></thead><tbody>{filteredUsers.map(user => <tr key={user.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(user.full_name || user.email).slice(0,1).toUpperCase()}</span><div><strong>{user.full_name || 'Unnamed user'}</strong><small>{user.email}</small></div></div></td><td><code>{user.account_number || 'Not assigned'}</code></td><td><span className={`admin-role ${user.roles.includes('admin') ? 'admin-role-admin' : ''}`}>{user.roles.join(', ') || 'customer'}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}</td><td><button className="admin-delete" disabled={busy} title="Delete user" aria-label={`Delete ${user.email}`} onClick={() => void deleteUser(user)}><Trash2 size={16} /></button></td></tr>)}</tbody></table>{!filteredUsers.length && <div className="admin-empty"><Users size={25} /><strong>No users found</strong><span>Try a different search or create a user.</span></div>}</div>
+            <div className="admin-table-wrap"><table><thead><tr><th>USER</th><th>ACCOUNT NUMBER</th><th>BALANCE</th><th>ROLE</th><th>CREATED</th><th>LAST SIGN IN</th><th>ACTION</th></tr></thead><tbody>{filteredUsers.map(user => <tr key={user.id}><td><div className="admin-user-cell"><span className="admin-avatar">{(user.full_name || user.email).slice(0,1).toUpperCase()}</span><div><strong>{user.full_name || 'Unnamed user'}</strong><small>{user.email}</small></div></div></td><td><code>{user.account_number || 'Not assigned'}</code></td><td><strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: user.currency || 'USD' }).format(Number(user.balance_minor || 0) / 100)}</strong></td><td><span className={`admin-role ${user.roles.includes('admin') ? 'admin-role-admin' : ''}`}>{user.roles.join(', ') || 'customer'}</span></td><td>{new Date(user.created_at).toLocaleDateString()}</td><td>{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : 'Never'}</td><td><div className="admin-user-actions"><button className="admin-secondary" disabled={busy || !user.account_id} title="Adjust account balance" onClick={() => { setAdjustUser(user); setAdjustOperation('add'); setAdjustAmount(''); setAdjustReason('') }}><Plus size={14} /> Adjust funds</button><button className="admin-delete" disabled={busy} title="Delete user" aria-label={`Delete ${user.email}`} onClick={() => void deleteUser(user)}><Trash2 size={16} /></button></div></td></tr>)}</tbody></table>{!filteredUsers.length && <div className="admin-empty"><Users size={25} /><strong>No users found</strong><span>Try a different search or create a user.</span></div>}</div>
+            {adjustUser && <form className="admin-create-form admin-balance-form" onSubmit={adjustBalance}>
+              <div className="admin-form-title"><div><strong>Adjust account balance</strong><p>{adjustUser.full_name || adjustUser.email} · Account {adjustUser.account_number || 'Not assigned'} · Current balance {new Intl.NumberFormat('en-US', { style: 'currency', currency: adjustUser.currency || 'USD' }).format(Number(adjustUser.balance_minor || 0) / 100)}</p></div><button type="button" aria-label="Close balance adjustment" onClick={() => setAdjustUser(null)}><X size={16} /></button></div>
+              <div className="admin-form-grid">
+                <label>Operation<select value={adjustOperation} onChange={e => setAdjustOperation(e.target.value as 'add' | 'deduct')}><option value="add">Add funds</option><option value="deduct">Deduct funds</option></select></label>
+                <label>Amount (USD)<input type="number" min="0.01" max="1000000000" step="0.01" required value={adjustAmount} onChange={e => setAdjustAmount(e.target.value)} placeholder="e.g. 250.00" /></label>
+                <label className="admin-balance-reason">Reason / reference<input required minLength={3} maxLength={240} value={adjustReason} onChange={e => setAdjustReason(e.target.value)} placeholder="e.g. Manual account correction" /></label>
+              </div>
+              <div className="admin-form-actions"><button type="button" className="admin-secondary" onClick={() => setAdjustUser(null)}>Cancel</button><button className="admin-primary" disabled={busy || !adjustUser.account_id}>{busy ? <LoaderCircle size={15} className="admin-spin" /> : <CheckCircle2 size={15} />}{adjustOperation === 'add' ? 'Add funds' : 'Deduct funds'}</button></div>
+              <p className="admin-balance-warning">This creates a ledger entry and an audit record. Deductions cannot exceed the available balance.</p>
+            </form>}
             <div className="admin-table-foot"><span><ShieldCheck size={14} /> User management actions are server-validated.</span><span>Simulation environment only</span></div>
           </section>
 
