@@ -411,6 +411,8 @@ function SupportChatWidget({ userId }: { userId: string }) {
   const [loadingChat, setLoadingChat] = useState(false)
   const [sending, setSending] = useState(false)
   const [chatError, setChatError] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
+  const readStorageKey = 'support-chat-last-read-' + userId
 
   const loadChat = useCallback(async (createIfMissing = false) => {
     if (!supabase || !userId) return
@@ -427,24 +429,38 @@ function SupportChatWidget({ userId }: { userId: string }) {
     if (found) {
       const result = await supabase.from('support_messages').select('id,conversation_id,sender_id,body,created_at').eq('conversation_id', found.id).order('created_at', { ascending: true }).limit(200)
       if (result.error) setChatError(result.error.message)
-      else { setMessages((result.data || []) as SupportMessage[]); setChatError('') }
-    } else setMessages([])
+      else {
+        const loadedMessages = (result.data || []) as SupportMessage[]
+        setMessages(loadedMessages)
+        setChatError('')
+        const lastRead = localStorage.getItem(readStorageKey) || ''
+        const unread = loadedMessages.filter(message => message.sender_id !== userId && message.created_at > lastRead).length
+        if (open) {
+          localStorage.setItem(readStorageKey, new Date().toISOString())
+          setUnreadCount(0)
+        } else setUnreadCount(unread)
+      }
+    } else { setMessages([]); setUnreadCount(0) }
     setLoadingChat(false)
   }, [userId])
 
   useEffect(() => {
-    if (!open || !supabase) return
+    if (!supabase) return
     const client = supabase
-    void loadChat(true)
+    void loadChat(false)
     const channel = client.channel('customer-support-chat-' + userId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, payload => {
-        const changed = payload.new as Partial<SupportMessage>
-        if (!changed.conversation_id || changed.conversation_id === conversation?.id) void loadChat(false)
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, () => { void loadChat(false) })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_conversations', filter: 'user_id=eq.' + userId }, () => { void loadChat(false) })
       .subscribe()
     return () => { void client.removeChannel(channel) }
-  }, [open, loadChat, userId, conversation?.id])
+  }, [loadChat, userId])
+
+  useEffect(() => {
+    if (!open) return
+    localStorage.setItem(readStorageKey, new Date().toISOString())
+    setUnreadCount(0)
+    void loadChat(false)
+  }, [open, readStorageKey, loadChat])
 
   const startNewChat = async () => {
     if (!supabase || !userId || loadingChat || sending) return
@@ -478,7 +494,7 @@ function SupportChatWidget({ userId }: { userId: string }) {
       <div className="support-chat-messages">{loadingChat && !messages.length ? <p className="support-chat-empty">Connecting to support…</p> : !messages.length ? <><p className="support-chat-empty">Hi! Choose a quick question or write your own message. Our team will reply here.</p><div className="support-chat-quick-actions"><span>QUICK QUESTIONS</span>{['I need help with a transfer','I have a question about my account','I need help with a card','I have a question about a loan','I want to report a problem'].map(question => <button key={question} type="button" onClick={() => setDraft(question)}>{question}<ChevronDown size={13}/></button>)}</div></> : messages.map(message => <div key={message.id} className={'support-chat-bubble ' + (message.sender_id === userId ? 'mine' : 'theirs')}><p>{message.body}</p><small>{new Date(message.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</small></div>)}{chatError && <p className="support-chat-error">{chatError}</p>}</div>
       <form className="support-chat-compose" onSubmit={sendMessage}><textarea value={draft} onChange={e => setDraft(e.target.value)} maxLength={4000} rows={2} placeholder="Write your message…" aria-label="Message to support" required/><button type="submit" disabled={sending || !draft.trim() || !conversation} aria-label="Send message">{sending ? <LoaderCircle size={17} className="spin"/> : <Send size={17}/>}</button></form>
     </section>}
-    <button className="support-chat-launcher" type="button" onClick={() => setOpen(value => !value)} aria-label={open ? 'Close support chat' : 'Contact customer support'}><span>{open ? <X size={22}/> : <MessageCircle size={22}/>}</span>{!open && <span className="support-chat-launcher-label">Need help?</span>}</button>
+    <button className="support-chat-launcher" type="button" onClick={() => setOpen(value => !value)} aria-label={open ? 'Close support chat' : unreadCount ? 'Contact customer support, ' + unreadCount + ' unread messages' : 'Contact customer support'}><span>{open ? <X size={22}/> : <MessageCircle size={22}/>}</span>{!open && unreadCount > 0 && <span className="support-chat-unread-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}{!open && <span className="support-chat-launcher-label">Need help?</span>}</button>
   </div>
 }
 
